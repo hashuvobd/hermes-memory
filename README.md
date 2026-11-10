@@ -33,3 +33,27 @@ python sync.py --restore
 That copies memory and skills into the local Hermes home (`%LOCALAPPDATA%\hermes` on Windows,
 `~/.hermes` on Linux/macOS). Start a new Hermes session afterwards: memory is loaded at session start,
 so an already-running session will not see it.
+
+## Project memory
+
+`projects/` holds one markdown file per project, an index (`INDEX.md`), a template, and `repos.json`,
+which maps each project to its local repo and the commit sha its file was last written for.
+
+Two rules keep it current:
+
+1. After any `git push` on a project, its file gets updated before moving on.
+2. An hour of quiet after work triggers the same update: work that was never committed, or a decision
+   taken in conversation.
+
+Rule 2 runs as a scheduled monitor job (`project-memory-sync`, every 30 minutes). The check itself is a
+script with no model call, and the agent only wakes when a tracked repo has commits newer than its
+recorded baseline and its last commit is at least 60 minutes old.
+
+To rebuild the job on a new machine:
+
+```bash
+cp scripts/project_memory_monitor.py ~/.hermes/scripts/     # %LOCALAPPDATA%\hermes\scripts on Windows
+```
+
+Then ask Hermes: create a cron job every 30 minutes, monitor `project_memory_monitor.py`, skill
+`project-memory`, prompt as documented in that skill.
