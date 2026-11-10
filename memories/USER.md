@@ -1,0 +1,1 @@
+Goes by Shuvo. On Windows 11 Pro (i5-12400, 16GB RAM, GTX 1650 4GB) as a daily driver with D:, E: data drives. Comfortable with AI tooling and dev work: keeps Antigravity IDE (~1,800 community skills in ~/.gemini/config/skills), Codex, OpenCode, Android Studio, Adobe CC. Prefers the Elite/terminal-deck layout with a black accent. Connected connectors: supabase, vercel.

@@ -1,0 +1,1 @@
+Shuvo expects live data, not recall: when a fact may have moved (model releases, benchmarks, prices, software versions, current events), search the web and answer with dated sources instead of relying on training knowledge, which is about a generation behind on AI models. Say plainly when something was checked and when.
