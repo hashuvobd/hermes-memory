@@ -48,6 +48,12 @@ Supporting assets: `scripts/gh-env.sh` + `scripts/git-credential-token.py`
   `gh pr view --comments` — decisions live in threads, not titles.
 - Sweep for duplicates before creating anything:
   `gh pr list --search` / `gh issue list --search`.
+- Prove auth with a live read, not just `gh auth status`: `gh api user --jq
+  .login` plus `gh repo list --limit 5`. Status shows a token exists, not that
+  it is the right account or that its scopes cover the task.
+- Authentication is not commit identity. Check `git config user.email` before
+  the first commit in a repo — the credential helper covers pushes only. See
+  `references/auth.md`.
 
 ## Verification
 

@@ -16,6 +16,47 @@
 3. Check `.env` has the right API key
 4. **GitHub Copilot** (`copilot` / `copilot-acp`) lives in the `github-copilot` labs plugin (`hermes plugins install github-copilot`); sign in with `hermes auth add copilot` — `gh` CLI logins are not read.
 
+### Model switch refused: `use_session_mutation_model` (desktop picker)
+
+`Model switch failed: JsonRpcGatewayError: use_session_mutation_model` in
+`~/.hermes/logs/desktop.log` means the picker sent a bare
+`config.set {key: 'model'}`. A model pick is session policy, not config: the
+gateway accepts it only as the revision-fenced `session.mutate` operation, and
+the desktop translator (`pickerModelMutation` in
+`apps/desktop/src/api/canonical-protocol.ts`) is what rewrites it. That
+translator splits the picker value `<model> --provider <id> [--session]` on
+whitespace and demands exactly two flag tokens — so **a model NAME containing a
+space makes it return null**, the pick falls through as raw `config.set`, and
+the gateway refuses it. The `/model <name>` slash command parses the same way
+and fails identically.
+
+Diagnose before touching anything: read the log line, then feed the parser the
+picker's real value.
+
+```js
+// inline pickerModelMutation in node -e
+"Some Model --provider custom"          -> null      // broken
+"Some Model --provider custom --session" -> null     // broken
+"Some-Model --provider custom"          -> {model,provider}
+```
+
+Fixes, best first:
+
+1. **No whitespace in model IDs** on the serving endpoint — rename, or expose
+   hyphenated aliases. Fixes every surface with no rebuild; the only fix that
+   survives updates.
+2. Immediate workaround: `hermes config set model.default "<name>"`, then start
+   a new session. Writes config.yaml directly and bypasses the picker; it does
+   not retro-apply to the running session.
+3. Patch the parser to `/^(.+?)\s+--provider\s+(\S+)(\s+--session)?$/` and
+   rebuild the desktop bundle. Correct but local — re-applied after every
+   update; report upstream as well.
+
+Same-symptom neighbour: an OpenAI-compatible endpoint that publishes no model
+metadata logs `Could not detect context length ... defaulting to 256,000 tokens
+(probe-down)` in `agent.log`. Harmless when that number is right; pin it with
+`model.context_length` when it is not.
+
 ### Changes not taking effect
 - **Tools/skills:** `/reset` starts a new session with updated toolset
 - **Config changes:** In gateway: `/restart`. In CLI: exit and relaunch.

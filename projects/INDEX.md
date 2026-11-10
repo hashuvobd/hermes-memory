@@ -5,6 +5,7 @@ One file per project, named `<slug>.md`. This index is the entry point: read it 
 | Project | Slug | Status | Last touched |
 |---|---|---|---|
 | Skybridge Portal | `skybridge-portal` | active | 2026-11-10 |
+| AASH API | `aash-api` | active | 2026-11-10 |
 
 ## Conventions
 

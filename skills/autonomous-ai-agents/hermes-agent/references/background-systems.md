@@ -41,26 +41,6 @@ the `cronjob` tool, the `hermes cron` CLI (`list`, `add`, `edit`,
   `skip_memory=True` by default, and cron deliveries are framed with a
   header/footer instead of being mirrored into the target gateway
   session (keeps role alternation intact).
-- **Monitor gating (cheap polling).** `monitor` takes a script path or URL,
-  runs it each tick with **no model call**, and suppresses the agent run
-  entirely when the output is identical to the previous tick; changed output
-  injects a diff into the prompt. The source must be byte-stable — no
-  timestamps, no elapsed durations, no unsorted iteration — or every tick looks
-  changed and the agent runs forever. The first tick always runs as baseline.
-  The state that decides "changed" lives in the job, so a script that advances
-  its own baseline (a recorded commit sha, a last-seen id) goes quiet again by
-  itself; that is the intended shape.
-- **Script-only (`no_agent=True`)** delivers stdout verbatim: non-empty output
-  is sent, empty output sends nothing, and a non-zero exit or timeout delivers
-  an error alert. Script paths must resolve inside `$HERMES_HOME/scripts/`
-  (relative, absolute and `~` forms are fine; traversal and symlink escapes are
-  rejected). Interpreter is chosen by extension: `.sh`/`.bash` run under bash
-  from PATH, everything else under the running Python. **On Windows prefer a
-  `.py` entry point** — it is immune to the scheduler's PATH and can
-  `subprocess.run([sys.executable, ...])` any external script. `deliver`
-  defaults to the chat the job was created from; `local` records silently.
-- **Cron runs cannot create cron jobs** (runaway-scheduling guard): the tool is
-  disabled inside a cron session, so a scheduled job can never schedule another.
 
 User docs: https://hermes-agent.nousresearch.com/docs/user-guide/features/cron
 

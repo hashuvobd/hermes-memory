@@ -7,6 +7,13 @@
       "recorded_sha": "f29cd3ad5ca3ac79b70a76da3c5eb9941612bd3b",
       "recorded_sha_date": "2026-11-10T16:54:43+06:00",
       "file": "projects/skybridge-portal.md"
+    },
+    "aash-api": {
+      "path": "/home/shuvo/Projects/AASH-API",
+      "remote": "https://github.com/hashuvobd/AASH-API",
+      "recorded_sha": "24539c95bd6f20fded1990796f0bc43636065358",
+      "recorded_sha_date": "2026-11-10T22:11:36+06:00",
+      "file": "projects/aash-api.md"
     }
   }
 }

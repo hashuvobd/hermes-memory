@@ -15,7 +15,7 @@ Full reference: https://hermes-agent.nousresearch.com/docs/user-guide/configurat
 | `approvals` | `mode` (smart/manual/off), `timeout`, `cron_mode` |
 | `stt` | `enabled`, `provider` (local/groq/openai/mistral/elevenlabs/deepinfra) |
 | `tts` | `provider` (edge/elevenlabs/openai/minimax/mistral/neutts/gemini/piper/kittentts/deepinfra/xai) |
-| `memory` | `memory_enabled`, `user_profile_enabled`, `provider`, `write_approval`, `memory_char_limit`, `user_char_limit` |
+| `memory` | `memory_enabled`, `user_profile_enabled`, `provider`, `write_approval` |
 | `security` | `redact_secrets`, `website_blocklist` |
 | `browser` | `headed` (false), `engine` (auto/lightpanda), `executable_path` ("" = auto-detect Chromium), `user_data_dir` ("" = fresh ephemeral profile per session), `chromium_args` ([]), `command_timeout` (Chromium launch timeout floor), `cloud_provider`, `cdp_url`, `use_real_profile` |
 | `delegation` | `model`, `provider`, `max_concurrent_children`, `max_iterations` (50), `max_spawn_depth` |
@@ -23,12 +23,6 @@ Full reference: https://hermes-agent.nousresearch.com/docs/user-guide/configurat
 | `curator` | `enabled`, `consolidate` (false, opt-in aux-model consolidation), `interval_hours`, `stale_after_days` |
 
 `hermes config check` reports sections missing from an older config.
-
-Memory budget: `memory.memory_char_limit` and `memory.user_char_limit` cap the injected memory and
-profile blocks. An over-limit write is refused rather than truncated, and the cap is checked only on
-the FINAL result of a batched edit, so one call can remove stale entries and add new ones together.
-The injected block is frozen at session start: a limit raised mid-session applies from the next
-session, not the current turn.
 
 ### Toolsets
 

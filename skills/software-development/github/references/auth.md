@@ -240,6 +240,47 @@ If `--with-token` hangs here, use the hosts.yml fallback from the pitfall above.
 gh auth status
 ```
 
+### Prove it with a live read, then check commit identity
+
+`gh auth status` proves a token exists and lists its scopes. It does not prove
+the account is the one the user means, or that the scope is wide enough for the
+task. Spend one call before telling them they have access:
+
+```bash
+gh api user --jq '.login,.public_repos'
+gh repo list --limit 5
+```
+
+A working keyring token also does not make commits work — the credential helper
+covers pushes only, and `user.name`/`user.email` are a separate setting:
+
+```bash
+git config --global user.name; git config --global user.email   # empty = commits will fail
+```
+
+Never infer identity from `git log -1 --format='%ae'`. A fresh or shallow clone
+can carry a commit authored on another machine while this box has no identity at
+all (the last commit's author says nothing about local config). Prove it with a
+throwaway commit — git answers definitively in one call:
+
+```bash
+cd "${HERMES_HOME:-$HOME/.hermes}/cache/scratch" && mkdir -p idtest && cd idtest \
+  && git init -q . && echo hi > a.txt && git add a.txt && git commit -m test
+# fatal: unable to auto-detect email address (got 'user@host.(none)')  -> no identity
+```
+
+Fix (global applies to every repo here without a local override; per-repo config
+still wins, so client repos can keep their own identity):
+
+```bash
+git config --global user.name "<login>"
+git config --global user.email "<login>@users.noreply.github.com"
+```
+
+The noreply address keeps the real email out of commit metadata while GitHub
+still attributes the commits to the profile. Undo with
+`git config --global --unset user.email` (same for `user.name`).
+
 ---
 
 ## Using the GitHub API Without gh
@@ -301,3 +342,5 @@ fi
 | Credentials not persisting | Check `git config --global credential.helper` — must be `store` or `cache` |
 | Multiple GitHub accounts | Use SSH with different keys per host alias in `~/.ssh/config`, or per-repo credential URLs |
 | `gh: command not found` + no sudo | Use git-only Method 1 above — no installation needed |
+| `gh auth status` fine but a live call 404s / is scoped out | `gh api user --jq .login` and `gh repo list --limit 5` — token may be too narrow or belong to a different account |
+| `git commit` → `fatal: unable to auto-detect email address` | Credential helper authenticates pushes, not commits. Set `user.name` + `user.email` (`<login>@users.noreply.github.com`) |

@@ -32,6 +32,26 @@ GitHub Copilot (`copilot`, `copilot-acp`) is a labs plugin, not core: `hermes pl
 Multiple credentials per provider pool and rotate automatically (`hermes auth`).
 Fallback chain when the primary fails: `hermes fallback add|remove|list`.
 
+#### Custom providers and model discovery
+
+A `custom` provider is discovered with `GET {base_url}/models` and the result is
+persisted into that `custom_providers` entry (`models` map + `models_discovered`).
+The probe is enrichment, not a gate: a provider with no `/models` route still
+works if the model id is set explicitly. Hand-declare the ids instead:
+
+```yaml
+custom_providers:
+  - name: some-vendor
+    base_url: "https://host/v1"          # inference prefix only
+    key_env: SOME_VENDOR_API_KEY
+    models:
+      "@cf/meta/llama-3.1-8b-instruct": {}
+```
+
+A user-curated `models` map is never overwritten by a later probe. Providers whose
+catalog lives on a sibling path, or that only serve `POST /chat/completions`, need
+exactly this treatment — see the `llm-provider-integration` skill for probing them.
+
 ### User-defined model aliases
 
 Work with `/model <name>` in CLI and every gateway platform. Resolved by

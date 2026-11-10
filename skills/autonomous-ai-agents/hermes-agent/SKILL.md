@@ -227,3 +227,19 @@ terminal(command="tmux new-session -d -s resumed 'hermes --resume 20260225_14305
 - **Secrets in `.env`, settings in `config.yaml`** — never tell a user to put a non-credential setting in `.env`.
 - **Profile-safe paths** — `get_hermes_home()` in code, `$HERMES_HOME` when resolving paths in a session.
 - **Never hand-edit `config.yaml` for the user** — use `hermes config set KEY VAL`; a stray indent can corrupt the file and break the live gateway.
+
+## Before you touch their setup
+
+This user asks "what will happen if you do it?" before agreeing to a state
+change. Answer it unprompted, in three parts: **what changes, what does not
+change, and how to undo it.** Applies to `hermes config set`, git identity,
+credential/token scopes, and rebuilds — name the file actually written, state
+plainly when there is no remote or API effect, and hand over the unset/revert
+command.
+
+- Prefer the reversible local write over the remote or scope-widening one.
+- Do not widen a token's scopes to solve a problem that does not need them;
+  recommend against it and leave the credential alone.
+- Prove the consequence cheaply where you can — a throwaway commit in
+  `$HERMES_HOME/cache/scratch` settles what a git identity setting does in one
+  call, instead of describing it.
