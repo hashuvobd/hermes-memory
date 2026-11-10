@@ -5,7 +5,7 @@
 - **Started:** 2026-10-25
 - **Last touched:** 2026-11-10
 - **Repo / location:** `E:\My Projects\Skybridge Portal` · https://github.com/hashuvobd/skybridge-portal-v2
-- **Stack:** Next.js 16.4.3 (App Router, Turbopack) · React 19.3 · TypeScript · Tailwind v4 · Supabase (JS REST client at runtime) · Prisma (seed/CLI only) · xlsx
+- **Stack:** Next.js 16.4.3 (App Router, Turbopack) · React 19.3 · TypeScript · Tailwind v4 · Supabase (JS REST client) · Supabase Auth via @supabase/ssr · Prisma (seed/CLI only) · xlsx
 
 ## Goal
 
@@ -26,11 +26,24 @@ Verification on 2026-11-10: `tsc --noEmit` clean, `npm run build` passes (10 rou
 dev server 200, all API routes return real (non-dummy) data. `eslint` reports 32 errors / 22
 warnings, all `no-explicit-any` + unused vars — `next build` does not gate on lint.
 
-**Uncommitted since 2026-10-27** (the whole Supabase migration): `dataService.ts` rewritten
-Prisma → Supabase, `types.ts` decoupled from `@prisma/client`, `next.config.ts` gained
-`output: "standalone"`, `CandidateTable` gained a `metrics` prop, plus untracked
-`src/lib/supabase.ts` and `scripts/prepare-deploy.js`. `deploy.zip` (65 MB) sits untracked in
-the repo root.
+**Committed 2026-11-10 as `f29cd3a`:** the long-parked Supabase runtime migration (`dataService.ts`
+Prisma → Supabase, `types.ts` decoupled from `@prisma/client`, `next.config.ts` and
+`output: "standalone"`, `scripts/prepare-deploy.js`). Not yet pushed: master is ahead 1 of
+origin/master.
+
+**Uncommitted, ~1,537 lines across 17 new files: the auth layer.** Supabase Auth through
+`@supabase/ssr`. Role and agency binding live in `app_metadata` (not user-writable), display name in
+`user_metadata`; a session without a valid role is rejected outright. `src/proxy.ts` (Next 16's
+middleware) refreshes cookies and bounces anonymous visitors to `/login`; authorization itself is
+per-route through `@/lib/auth/guards`. Two Supabase clients by design: a user-scoped cookie client for
+request paths, a service-role client only for auth admin calls. The first administrator is created by
+`/setup` + `/api/setup`, public until one exists.
+
+**The auth layer does not yet protect anything.** Only `/api/auth/me` calls a guard; the candidates,
+agents, dashboard, export and seed routes are untouched, and `dataService.ts:30` still prefers
+`SUPABASE_SERVICE_ROLE_KEY`. The exposure in Next steps 1 is unchanged in practice until that lands.
+
+Also untracked: `scripts/_auth-probe.mjs` (temporary diagnostic that reads `.env`), `deploy.zip` (65 MB).
 
 ## Decisions
 
@@ -42,26 +55,39 @@ the repo root.
   or client modules.
 - 2026-10-27 — Deploy target is a VPS/cPanel-style host via `output: "standalone"` +
   `scripts/prepare-deploy.js` producing `deploy.zip`.
-- 2026-11-10 — Considered the "two data layers" split a bug to fix; parked. Prisma is dead weight
-  at runtime but harmless.
+- 2026-11-10 — Auth is Supabase Auth, not hand-rolled. Reason: a managed session store beats
+  password handling in an internal ops tool.
+- 2026-11-10 — Role and `agentId` live in `app_metadata`, `user_metadata` is display only. Reason: a
+  user cannot write `app_metadata`, so no client can promote itself.
+- 2026-11-10 — The proxy refreshes cookies and redirects, nothing more; each route handler verifies
+  the session itself. Reason: the proxy is not the authorization boundary, and Next's docs say so.
+- 2026-11-10 — Two Supabase clients split by purpose: user-scoped for requests, service-role only for
+  auth admin. Reason: keeps RLS meaningful and confines the key that bypasses it.
+- 2026-11-10 — The "two data layers" split was judged ugly but not a bug; parked deliberately.
+  Prisma is dead weight at runtime but harmless.
 
 ## Open questions
 
 - Deployment host for `deploy.zip` — which box, and is it still live?
 - Was `deploy.zip` ever uploaded anywhere? It contains `.env` including the service-role key
   (see Gotchas).
-- Auth model: who is actually meant to log in, and is there an existing Supabase Auth setup to
-  attach to, or does this need building from scratch?
+- Has login, logout and first-admin setup been verified end to end against this Supabase project, and
+  does `/api/setup` actually self-disable once an admin exists?
+- Which routes get guards, and once requests run as the signed-in user rather than the service role,
+  which tables need RLS policies written?
 - Are the 21 agencies correct, or is the true partner list the 17 in the README?
 
 ## Next steps
 
 Findings from the 2026-11-10 review, ordered worst-first. All still open.
 
-1. **Auth — nothing is protected.** No middleware, no sessions, zero route authorization, and
-   `src/lib/supabase.ts` prefers `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS). Anyone reaching the
-   deployed URL can `GET /api/candidates` and read all 208 names + passport numbers, or PATCH/DELETE
-   freely. The "Head Office Admin / Agent Portal" toggle is cosmetic `useState` — gates nothing.
+1. **Nothing is protected yet.** The auth layer now exists but almost nothing calls it: only
+   `/api/auth/me` uses a guard, and `src/lib/supabase.ts` plus `dataService.ts:30` still prefer
+   `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS). Until the candidates, agents, dashboard and export
+   routes are wrapped in `requireUser`/`requireRole` and those fallbacks are removed, anyone reaching
+   the deployed URL can `GET /api/candidates` for all 208 names + passport numbers, or PATCH/DELETE
+   freely. The "Head Office Admin / Agent Portal" toggle is still cosmetic `useState`.
+   Then commit the auth layer and push `f29cd3a` — master is ahead 1 of origin/master.
 2. **PostgREST filter injection.** `dataService.ts:103` interpolates raw search into
    `query.or(\`name.ilike.%${search}%,...\`)`. A `,` or `)` rewrites the filter expression. Real
    injection surface given the service-role key.
@@ -97,8 +123,6 @@ written on every mutation but never displayed; `REJECTED` is in the enum and sty
 but no UI sets it and kanban omits the column; `contactForm` always `true`, unused; `.env` and
 `.env.local` are byte-identical duplicates.
 
-Then: commit the parked 2026-10-27 work.
-
 ## Key paths and commands
 
 ```bash
@@ -110,6 +134,10 @@ node check-count.js                      # live row counts via Prisma (read-only
 node scripts/prepare-deploy.js           # builds deploy.zip — copies .env into the zip
 ```
 
+Auth module map: `src/lib/auth/{session,guards,types,audit,agency}.ts` (session → guards → data),
+`src/lib/supabase/{server,admin}.ts` (user-scoped vs service-role), `src/proxy.ts` (cookie refresh and
+redirect only), `src/app/{login,setup}/page.tsx`, `src/app/api/{auth,setup}/route.ts`.
+
 Data flow is one funnel: `src/app/page.tsx` holds all state → `src/components/*` (props down) →
 `src/app/api/*` (8 thin routes) → `src/lib/dataService.ts` (the only file touching data, ~50% of it
 duplicated DB-vs-mock logic) → Supabase REST.
@@ -119,6 +147,9 @@ duplicated DB-vs-mock logic) → Supabase REST.
 - **Next 16 is not the Next you know.** `AGENTS.md` warns the APIs/conventions differ from training
   data and to read `node_modules/next/dist/docs/` before writing code. `cacheComponents: true` and
   `partialPrefetching: true` are both enabled.
+- **The service-role key is still reachable from the request path** (`dataService.ts:30`,
+  `src/lib/supabase.ts`). The new admin client is the only intended holder; any other use is a bug,
+  not a convenience.
 - **Business rule is duplicated in ~4 places.** `approval ? (passportInHand && pccReceived ?
   DEPLOYMENT_READY : APPROVED) : submissionSlip ? SUBMITTED : INTAKE` lives in `createCandidate`,
   `updateCandidate` (twice — DB and mock path), and `batchUpdateCandidates`. Change one, change all.

@@ -25,7 +25,7 @@ Skip it for one-off questions and anything with no continuing thread.
 
 ## Triggers: when the file must be updated
 
-Two standing rules, both set up by Shuvo on 2026-11-10:
+Two standing rules from the user:
 
 1. **After every push.** The moment work on a project ends in a `git push`, update that project's file before moving on: rewrite `Current state`, add dated decision lines, refresh `Next steps`, bump `Last touched`, update the index row, advance `recorded_sha` in `repos.json`, then push this repo. Do not wait to be asked.
 2. **One hour of quiet.** If a project saw work (commits, or a session that changed its direction) and then an hour passes with no further activity, flush the update. This is the case a push does not cover: work that was never committed, or a decision made in conversation.
@@ -69,7 +69,33 @@ Rules:
 
 ## Creating a project
 
-Copy `_TEMPLATE.md` to `<slug>.md`, fill Goal and Stack, add a row to `INDEX.md`, then commit. Slug is lowercase and hyphens, and never changes afterwards.
+1. Copy `_TEMPLATE.md` to `<slug>.md`; fill Goal, Stack and Repo / location.
+2. Add a row to `INDEX.md`.
+3. If the project has a git repo, register it in `repos.json` as
+   `{path, remote, recorded_sha, recorded_sha_date, file}`, with `recorded_sha`
+   set to the current HEAD. **The scheduled check only sees registered repos** —
+   an unregistered project never gets an automatic update however much work it
+   sees. If the repo is not cloned on this machine, either clone it or leave the
+   entry out and tell the user the automatic rule will not fire for it yet.
+4. Slug is lowercase and hyphens, and never changes afterwards. Commit.
+
+## Testing the automatic update
+
+Run `scripts/verify_project_memory_monitor.py` rather than hand-testing: it
+builds a throwaway repo with backdated commits, asserts the monitor fires, that a
+repeated idle tick produces byte-identical output, and that it goes silent once
+`recorded_sha` advances to HEAD. It restores the registry on the way out.
+Re-run it after every edit to the monitor.
+
+Two traps it exists to catch:
+
+- **Any value that changes between ticks re-wakes the agent every tick.** An
+  elapsed duration ("quiet 70m"), a timestamp, or unsorted iteration in the
+  output makes the gate useless and burns a model run per tick. Print what
+  changed, never when or how long ago.
+- **Git rejects relative dates in `GIT_COMMITTER_DATE`.** When backdating
+  fixture commits, pass absolute ISO timestamps (`2026-11-10T07:00:00+00:00`);
+  `"2 hours ago"` fails the commit silently and the fixture ends up empty.
 
 ## Syncing
 
