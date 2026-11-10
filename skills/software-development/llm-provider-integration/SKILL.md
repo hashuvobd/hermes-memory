@@ -49,6 +49,8 @@ A verifier built on discovery alone will reject providers that only support infe
 
 Keep `base_url` inference-only in the provider record and make `discovery_url` a separate optional field. Vendors that scope endpoints by account id (path-embedded account/project ids) commonly put discovery on a **sibling** path one level up from the inference prefix. See `references/cloudflare-workers-ai.md` for a verified example.
 
+Implement it as **one resolver** — `{provider, baseUrl, apiKey} → {kind, url, headers}` — that every caller goes through. A gateway grows several verification paths (the admin "test connection" button, the row-level ping, the background health check), and if each one hardcodes `{base}/models`, fixing one leaves the others quarantining a perfectly healthy channel. Before declaring the fix done, grep the repo for every site that builds a `/models` URL and confirm none is left.
+
 ## Step 4 — fall back to a real completion as the health probe
 
 When a provider has no discovery endpoint, verify with `POST {base}/chat/completions`, `max_tokens: 1`, cheapest known model. One call proves token validity, model access, and streaming-free plumbing. Use `scripts/probe_provider.sh` to run discovery + root + completion probes in one pass.

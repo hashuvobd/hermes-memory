@@ -19,12 +19,14 @@ Auth: `Authorization: Bearer <API_TOKEN>` with **Workers AI: Read** (or Write). 
 ## Discovery payload
 
 ```
-{ "success": true, "result": [ { "name": "@cf/meta/llama-3.1-8b-instruct",
+{ "success": true, "result": [ { "id": "f9f2250b-1048-4a52-9910-d0bf9f76…",
+    "name": "@cf/meta/llama-3.1-8b-instruct",
     "task": { "id": "…", "name": "Text Generation" },
     "properties": [ { "property_id": "context_window", … } ] } ],
   "result_info": { "page": 1, "per_page": 200, "total_count": 87 } }
 ```
 
+- **`id` is an internal uuid; `name` is the invocable `@cf/...` model id.** Storing `id` publishes routes that fail every inference with `5007 No such model <uuid> or task`. Pick the candidate that is namespaced (`@…` or `vendor/model`), reject uuid-shaped values, and never assume which field holds which — resolve it by shape, not by key.
 - The array is under **`result`**, not `data`/`models` — an OpenAI-shaped parser finds nothing and reports "0 models".
 - Page until `result_info.total_count` is collected; `per_page` is honoured but has a server-side ceiling, so never assume one page is the whole catalog.
 - `task.name` is the only reliable classifier: `Text Generation` → chat, `Text Embeddings` → embedding, others image/audio. Only text generation should auto-enable as a chat route.
@@ -37,6 +39,7 @@ Auth: `Authorization: Bearer <API_TOKEN>` with **Workers AI: Read** (or Write). 
 | `7001` | `GET not supported for requested URI` (405) | Route exists for another verb only. Fires **before auth** — proves nothing about the token. |
 | `7003` | `Could not route to ...` (404) | Path does not exist at all. |
 | `9106` | `Missing X-Auth-Key, X-Auth-Email or Authorization headers` (400) | Route is valid; credential missing/not sent. |
+| `5007` | `No such model <x> or task` (400) | The model string is not a Workers AI id — usually the catalog's uuid got stored instead of the `@cf/...` name, or the id lost its `@cf/` prefix. |
 
 ## Practical consequences
 
