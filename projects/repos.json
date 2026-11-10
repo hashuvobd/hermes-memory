@@ -1,4 +1,12 @@
 {
   "_comment": "Registry for the project-memory monitor. One entry per project that has a git repo. 'recorded_sha' is the commit the project file was last updated for; the agent advances it after each update so the monitor stays quiet. 'path' is a local clone on this machine.",
-  "projects": {}
+  "projects": {
+    "skybridge-portal": {
+      "path": "E:\\My Projects\\Skybridge Portal",
+      "remote": "https://github.com/hashuvobd/skybridge-portal-v2",
+      "recorded_sha": "621f096ad57f057141f4a8daf5bd992771d9778c",
+      "recorded_sha_date": "2026-10-25T14:23:09+06:00",
+      "file": "projects/skybridge-portal.md"
+    }
+  }
 }
