@@ -90,3 +90,22 @@ Auto-detect priority: local faster-whisper (`python -c "import pm; pm.sync_venv(
 | NeuTTS / Piper / KittenTTS (local) | None | Free |
 
 Voice commands: `/voice on` (voice-to-voice), `/voice tts` (always voice), `/voice off`.
+
+### Chat-surface visibility + busy input (`display.*`)
+
+Three independent knobs; users often ask for one and mean another:
+
+| Key | Hides | Values |
+|---|---|---|
+| `display.show_reasoning` | model reasoning / "Thought" blocks | bool (desktop Settings → Chat → Reasoning Blocks; `/reasoning hide`) |
+| `display.tool_progress` | tool rows (reads, greps, commands) | `off`/`new`/`all`/`verbose`/`log`; only `off` or `false` silences, a missing key means on |
+| `display.busy_input_mode` | — behaviour: what Enter does mid-turn | `interrupt` (default), `queue` (next turn), `steer` (inject after next tool call); `/busy <mode>` |
+
+"Answer-only" = `show_reasoning: false` + `tool_progress: off`. Approvals, failed calls and diffs stay visible regardless.
+
+Pitfalls, all verified in source:
+
+- `hermes config set display.tool_progress off` coerces `off` → boolean `false` and warns "not a recognized config key". The warning is cosmetic (the key registry lags the readers); `_load_tool_progress_mode()` and the desktop's `toolProgressVisible()` both handle a bool.
+- A CLI `config set` on these keys is **not pushed** to the running desktop renderer — `change_watcher.py` broadcasts skins/pets/cron/sessions/skills but no `config.changed`. The gateway side reads through `load_user_config_effective()` (mtime-cached) so behaviour (`busy_input_mode`) applies to the next message; the renderer repaints only after it refetches config (app reload or session switch). Say this instead of claiming it is already live.
+- Desktop sessions resolve `display.platforms.cli.show_reasoning` first, then the global key (that is what the app's own toggle writes); `tool_progress` is read globally only. Setting the global keys also replaces messaging-platform defaults — override under `display.platforms.<platform>` to keep Telegram/Discord chatty.
+- Hiding reasoning hides output, not thinking. Cost/latency come from `agent.reasoning_effort` or provider `enable_thinking: false`.

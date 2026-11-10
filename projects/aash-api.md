@@ -3,7 +3,7 @@
 - **Slug:** `aash-api`
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
-- **Last touched:** 2026-11-10 (discovery + uuid fix)
+- **Last touched:** 2026-11-10 (discovery + uuid fix + import without auto-routes)
 - **Repo / location:** `/home/shuvo/Projects/AASH-API` · https://github.com/hashuvobd/AASH-API
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, server actions via `@supabase/ssr`), Vercel
 
@@ -19,6 +19,7 @@ A commercial multi-provider AI gateway (aashapi.com): one API key and one monthl
 - Admin → Providers modal does live credential test + model discovery, bulk publish to routes, per-model live probe, row ping/health. Model routes support multi-model fallback cascades, drag-and-drop priority, round-robin combo mode, multimodal auto-delegation.
 - 2026-11-10: Cloudflare Workers AI works as a `custom` channel end to end — discovery hits its real catalog endpoint (see Gotchas), ids resolve to `@cf/...`, and models are classified by `task`.
 - 2026-11-10: model import refuses opaque uuid ids and reports the skip count, after a first attempt published Cloudflare's internal uuids as upstream model names.
+- 2026-11-10: **model routes no longer auto-create on provider import**. `batchRouteChannelModels` now takes `{createRoutes: false}` — the provider modal only records models in its catalog (`channel_imported_models_*`); the Models & Routing page's "Import All Discovered Models" is the explicit place to create live routes.
 
 ## Decisions
 
