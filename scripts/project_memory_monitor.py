@@ -61,9 +61,15 @@ def main() -> int:
             continue
         # refresh remote-tracking refs so a push from anywhere counts as activity
         git(path, "fetch", "--quiet", "--prune")
-        head = git(path, "rev-parse", "--short", "@{u}") or git(path, "rev-parse", "--short", "HEAD")
-        if not head:
+        # newest of local HEAD and upstream: covers both an unpushed local commit and a
+        # push made elsewhere that has not been pulled here yet
+        candidates = [sha for sha in (
+            git(path, "rev-parse", "--short", "HEAD"),
+            git(path, "rev-parse", "--short", "@{u}"),
+        ) if sha]
+        if not candidates:
             continue
+        head = max(candidates, key=lambda sha: int(git(path, "log", "-1", "--format=%ct", sha) or 0))
         recorded = str(cfg.get("recorded_sha", "")).strip()
         if recorded and (head.startswith(recorded) or recorded.startswith(head)):
             continue
