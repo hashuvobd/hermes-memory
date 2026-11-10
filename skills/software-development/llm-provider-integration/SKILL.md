@@ -74,6 +74,8 @@ Before suggesting any fix, say which of these it is:
 - **A failed probe is not proof the token is bad** — say what the test did and did not exercise.
 - **Read the provider's error envelope before stringifying it.** OpenAI uses `error.message`, Cloudflare uses `errors[0].{code,message}`, and many proxies use a bare `message`. Parse all three, or the real cause is buried in a JSON blob.
 - **Never let a missing discovery route quarantine a working channel.** Health checks that fail on 404/405 will take a perfectly good provider out of rotation; treat "no model list" as reachable, and verify with a 1-token completion instead.
+- **Route creation must be opt-in, not automatic.** A provider key modal that imports models should only record them in that provider's catalog (`channel_imported_models_*` or equivalent). Client-facing routes (`model_routes`, virtual aliases) are only created when the caller explicitly requests them — e.g. the Models & Routing page's "Import All Discovered Models" action. Auto-creating routes on import pollutes the routing table with unvetted entries and conflates catalog management with route management.
+- **Terminology matters: "Import" ≠ "Publish".** Use "Import" / "Imported" for recording models into a provider's local catalog, and "Create Route" / "Route" for making a model addressable by clients. Mixing them ("Publish Selected" when only importing) hides the fact that no route was created and misleads the admin about system state.
 
 ## References
 
