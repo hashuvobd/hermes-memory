@@ -1,1 +1,3 @@
 Shuvo expects live data, not recall: when a fact may have moved (model releases, benchmarks, prices, software versions, current events), search the web and answer with dated sources instead of relying on training knowledge, which is about a generation behind on AI models. Say plainly when something was checked and when.
+§
+Project memory: one markdown file per project in ~/hermes-memory/projects (INDEX.md is the entry point), in the private repo hashuvobd/hermes-memory alongside memories/ and skills/. Procedure lives in the project-memory skill. Memory sync: `python sync.py` in ~/hermes-memory.
