@@ -50,6 +50,22 @@ On Windows that is `C:\Users\<user>\hermes-memory\projects\`. The same paths app
 
 Do not read every project file. The index exists so that loading stays cheap.
 
+## Gathering the evidence (repo-backed projects)
+
+Write the file from the repo, not from recall and not by asking the user what they did. For each
+registered repo, from its local path:
+
+1. `git status --short` and `git log --oneline <recorded_sha>..HEAD` — committed work since the
+   recorded baseline, plus whatever is sitting uncommitted.
+2. `git diff --stat` and `git diff --stat <recorded_sha>..HEAD` — size and shape of the change.
+3. `git rev-parse --short HEAD @{u}` with `git log --oneline @{u}..HEAD` — whether HEAD is pushed. An
+   unpushed commit is ordinary state to record, not a mistake to fix silently.
+4. For a large or unfamiliar diff, read entry points rather than every file: the route or handler
+   list, the new module's exports, and `package.json` for added dependencies.
+5. **Before writing "X works", find X's call sites** (`grep -rn <symbol> src/`, `search_files`). A
+   layer that exists but is never invoked changes nothing at runtime, and recording it as done hides
+   the real next step. State which it is: built, wired, or both.
+
 ## Write path (end of meaningful work)
 
 Update the project file when any of these is true:
@@ -65,6 +81,8 @@ Rules:
 - Append decisions as one dated line each, with the reason. Never a narrative.
 - Bump `Last touched` and the index row in the same edit.
 - Keep the file under roughly 150 lines. When it grows, cut resolved detail; git history keeps it.
+- Edit with targeted patches, one section at a time. A whole-file rewrite is refused after a
+  paginated read, and per-section patches keep the diff reviewable.
 - Never write secrets, tokens or passwords. Name where the secret lives instead.
 
 ## Creating a project
@@ -73,7 +91,8 @@ Rules:
 2. Add a row to `INDEX.md`.
 3. If the project has a git repo, register it in `repos.json` as
    `{path, remote, recorded_sha, recorded_sha_date, file}`, with `recorded_sha`
-   set to the current HEAD. **The scheduled check only sees registered repos** —
+   set to the newest commit visible here (local HEAD included), not to upstream.
+   **The scheduled check only sees registered repos** —
    an unregistered project never gets an automatic update however much work it
    sees. If the repo is not cloned on this machine, either clone it or leave the
    entry out and tell the user the automatic rule will not fire for it yet.
@@ -87,8 +106,12 @@ repeated idle tick produces byte-identical output, and that it goes silent once
 `recorded_sha` advances to HEAD. It restores the registry on the way out.
 Re-run it after every edit to the monitor.
 
-Two traps it exists to catch:
+Traps it exists to catch:
 
+- **The baseline is the newest commit you can see, not the remote's.** A `recorded_sha` taken from
+  `@{u}` alone re-fires while local HEAD is ahead of origin, so the gate reports work it just
+  recorded as new. Take whichever of local HEAD and upstream is newer, both in the monitor and when
+  advancing the baseline by hand.
 - **Any value that changes between ticks re-wakes the agent every tick.** An
   elapsed duration ("quiet 70m"), a timestamp, or unsorted iteration in the
   output makes the gate useless and burns a model run per tick. Print what

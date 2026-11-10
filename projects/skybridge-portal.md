@@ -31,19 +31,29 @@ Prisma → Supabase, `types.ts` decoupled from `@prisma/client`, `next.config.ts
 `output: "standalone"`, `scripts/prepare-deploy.js`). Not yet pushed: master is ahead 1 of
 origin/master.
 
-**Uncommitted, ~1,537 lines across 17 new files: the auth layer.** Supabase Auth through
-`@supabase/ssr`. Role and agency binding live in `app_metadata` (not user-writable), display name in
-`user_metadata`; a session without a valid role is rejected outright. `src/proxy.ts` (Next 16's
-middleware) refreshes cookies and bounces anonymous visitors to `/login`; authorization itself is
-per-route through `@/lib/auth/guards`. Two Supabase clients by design: a user-scoped cookie client for
-request paths, a service-role client only for auth admin calls. The first administrator is created by
-`/setup` + `/api/setup`, public until one exists.
+**Uncommitted: the auth layer and role model.** Supabase Auth through `@supabase/ssr`. Role and agency
+binding live in `app_metadata` (not user-writable), display name in `user_metadata`; a session without a
+valid role is rejected outright. `src/proxy.ts` (Next 16's middleware) refreshes cookies and bounces
+anonymous visitors to `/login`; authorization itself is per-route through `@/lib/auth/guards`.
 
-**The auth layer does not yet protect anything.** Only `/api/auth/me` calls a guard; the candidates,
-agents, dashboard, export and seed routes are untouched, and `dataService.ts:30` still prefers
-`SUPABASE_SERVICE_ROLE_KEY`. The exposure in Next steps 1 is unchanged in practice until that lands.
+Roles: **ADMIN** (everything, incl. Team & Access), **EMPLOYEE** (operations data, read/write), **AGENT**
+(read-only, hard-scoped to its own agency). Every route now guards itself — candidate reads any
+signed-in user with AGENT pinned to its own `agentId` regardless of query params; candidate writes and
+agency creation ADMIN/EMPLOYEE; agency delete, seed and user administration ADMIN; metrics and export
+ADMIN/EMPLOYEE. Two Supabase clients by design: a user-scoped cookie client for request paths, a
+service-role client only for auth admin calls. First administrator via `/setup` + `/api/setup`, public
+until one exists, permanently closed after. Accounts are created by admins at `/api/users` and the
+Team & Access screen; deactivation is a 100-year Supabase ban, which kills both new logins and live
+sessions. Auth events are written to `AuditLog` with a null `candidateId`.
 
-Also untracked: `scripts/_auth-probe.mjs` (temporary diagnostic that reads `.env`), `deploy.zip` (65 MB).
+Verified 2026-11-10 end to end against the live project using throwaway accounts: **45/45** role and
+access checks plus **13/13** lifecycle checks (staff creation, AGENT promotion requires an agency,
+deactivate/reactivate, delete, 8-attempt sign-in throttle, sign-out invalidating a replayed access
+token, unknown-account 404). Every test account was deleted afterwards — `auth.users` back to 0 and the
+portal back in its first-run state. `npm run build` clean, 17 routes, `/` still static.
+
+Scripts: `scripts/auth-e2e.sh` (the suite, self-cleaning), `scripts/_auth-cleanup.mjs` (deletes
+`auth-e2e-*` / `auth-verify-*` accounts). `deploy.zip` (65 MB) is gitignored.
 
 ## Decisions
 
@@ -72,22 +82,22 @@ Also untracked: `scripts/_auth-probe.mjs` (temporary diagnostic that reads `.env
 - Was `deploy.zip` ever uploaded anywhere? It contains `.env` including the service-role key
   (see Gotchas).
 - Has login, logout and first-admin setup been verified end to end against this Supabase project, and
-  does `/api/setup` actually self-disable once an admin exists?
+  does `/api/setup` actually self-disable once an admin exists? — **Answered 2026-11-10: yes, both.**
 - Which routes get guards, and once requests run as the signed-in user rather than the service role,
-  which tables need RLS policies written?
+  which tables need RLS policies written? — **Guards: done. RLS policies: still open** (all 3 tables
+  have RLS disabled and 0 policies, so nothing depends on it yet).
 - Are the 21 agencies correct, or is the true partner list the 17 in the README?
 
 ## Next steps
 
 Findings from the 2026-11-10 review, ordered worst-first. All still open.
 
-1. **Nothing is protected yet.** The auth layer now exists but almost nothing calls it: only
-   `/api/auth/me` uses a guard, and `src/lib/supabase.ts` plus `dataService.ts:30` still prefer
-   `SUPABASE_SERVICE_ROLE_KEY` (bypasses RLS). Until the candidates, agents, dashboard and export
-   routes are wrapped in `requireUser`/`requireRole` and those fallbacks are removed, anyone reaching
-   the deployed URL can `GET /api/candidates` for all 208 names + passport numbers, or PATCH/DELETE
-   freely. The "Head Office Admin / Agent Portal" toggle is still cosmetic `useState`.
-   Then commit the auth layer and push `f29cd3a` — master is ahead 1 of origin/master.
+1. **Requests still reach the database as the service role.** Access control now sits in the route
+   handlers, but `dataService.ts:30` and `src/lib/supabase.ts` still prefer
+   `SUPABASE_SERVICE_ROLE_KEY`, so the layer underneath runs with the key that bypasses RLS — and RLS is
+   off on all three tables anyway. The next real hardening step is running request-path reads as the
+   signed-in user and writing policies to match. Then commit the auth work and push `f29cd3a` —
+   master is ahead 1 of origin/master.
 2. **PostgREST filter injection.** `dataService.ts:103` interpolates raw search into
    `query.or(\`name.ilike.%${search}%,...\`)`. A `,` or `)` rewrites the filter expression. Real
    injection surface given the service-role key.
@@ -136,7 +146,8 @@ node scripts/prepare-deploy.js           # builds deploy.zip — copies .env int
 
 Auth module map: `src/lib/auth/{session,guards,types,audit,agency}.ts` (session → guards → data),
 `src/lib/supabase/{server,admin}.ts` (user-scoped vs service-role), `src/proxy.ts` (cookie refresh and
-redirect only), `src/app/{login,setup}/page.tsx`, `src/app/api/{auth,setup}/route.ts`.
+redirect only), `src/app/{login,setup}/page.tsx`, `src/app/api/{auth,setup,users}/…`,
+`src/components/{AuthShell,LoginForm,SetupForm,UserManagement}.tsx`.
 
 Data flow is one funnel: `src/app/page.tsx` holds all state → `src/components/*` (props down) →
 `src/app/api/*` (8 thin routes) → `src/lib/dataService.ts` (the only file touching data, ~50% of it
@@ -156,6 +167,12 @@ duplicated DB-vs-mock logic) → Supabase REST.
 - **Supabase connector is project-scoped.** Connected as label `supabase_noir-lavish`; can operate
   on `bombegnoifzrchgqdqwv` only. `LIST_ALL_PROJECTS` returns 403 — enumerating projects needs a
   Personal Access Token. SQL tool can write despite its read-only flag.
+- **`AuditLog.id` has no database default.** It is a Prisma `@default(cuid())`, which the Prisma client
+  generates — the column is `text NOT NULL` with no default. Any write through PostgREST must supply its
+  own id or it fails as a NOT NULL violation, and the failure is easy to miss because the audit writer
+  swallows errors by design. `cuid()` ids anywhere else in the schema behave the same way.
+- **Supabase key deprecation (by end of 2026):** `anon` and `service_role` keys retire → `sb_publishable_...`
+  (client-safe, RLS applies) and `sb_secret_...` (server-only, bypasses RLS). Factor into the RLS work.
 - **git-bash path translation is off for native binaries.** `node /tmp/x.js` resolves to
   `E:\tmp\x.js`. Use forward-slash native paths or `$LOCALAPPDATA/Temp` for scratch files.
 - Killing the dev server: `taskkill //PID` fails in git-bash (MSYS rewrites the switch). Use

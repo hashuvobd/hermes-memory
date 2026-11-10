@@ -63,3 +63,14 @@ Never sync `.env`, `auth.json`, `sessions/`, `state.db`, or browser data.
 - A recovery README in the repo pays for itself: clone, restore, re-copy the cron
   scripts, recreate the jobs. Cron jobs and `$HERMES_HOME/scripts/` are **not**
   inside `memories/` or `skills/`, so they do not travel on their own.
+
+## Per-project notes ride along
+
+When the user wants continuity per project rather than only agent memory, the same
+repo carries a `projects/` tree (`INDEX.md`, `_TEMPLATE.md`, one `<slug>.md` each)
+plus a `repos.json` registry of tracked repos and their recorded baselines. That
+layer has its own workflow and its own monitor script — load the `project-memory`
+skill before touching it. Two consequences for the sync itself: project files are
+already inside the repo, so a plain `git add -A && git commit && git push` covers
+them; and a script the sync depends on should be kept as a copy under the repo's
+`scripts/` so a restore on a new machine has the source, not just the installed copy.
