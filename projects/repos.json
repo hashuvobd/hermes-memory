@@ -1,0 +1,4 @@
+{
+  "_comment": "Registry for the project-memory monitor. One entry per project that has a git repo. 'recorded_sha' is the commit the project file was last updated for; the agent advances it after each update so the monitor stays quiet. 'path' is a local clone on this machine.",
+  "projects": {}
+}

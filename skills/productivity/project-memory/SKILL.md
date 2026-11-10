@@ -23,6 +23,15 @@ Per-project notes live outside the agent's bounded memory, one markdown file eac
 
 Skip it for one-off questions and anything with no continuing thread.
 
+## Triggers: when the file must be updated
+
+Two standing rules, both set up by Shuvo on 2026-11-10:
+
+1. **After every push.** The moment work on a project ends in a `git push`, update that project's file before moving on: rewrite `Current state`, add dated decision lines, refresh `Next steps`, bump `Last touched`, update the index row, advance `recorded_sha` in `repos.json`, then push this repo. Do not wait to be asked.
+2. **One hour of quiet.** If a project saw work (commits, or a session that changed its direction) and then an hour passes with no further activity, flush the update. This is the case a push does not cover: work that was never committed, or a decision made in conversation.
+
+The scheduled job `project-memory-sync` covers rule 2 automatically: every 30 minutes a script checks each tracked repo, stays silent unless a repo has commits newer than its `recorded_sha` and its last commit is at least 60 minutes old, and only then wakes an agent to write the file. When it wakes you, the monitor output names the project slugs and the registry holds the paths and baselines.
+
 ## Where
 
 ```
