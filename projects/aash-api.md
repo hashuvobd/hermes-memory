@@ -20,6 +20,7 @@ A commercial multi-provider AI gateway (aashapi.com): one API key and one monthl
 - 2026-11-10: Cloudflare Workers AI works as a `custom` channel end to end — discovery hits its real catalog endpoint (see Gotchas), ids resolve to `@cf/...`, and models are classified by `task`.
 - 2026-11-10: model import refuses opaque uuid ids and reports the skip count, after a first attempt published Cloudflare's internal uuids as upstream model names.
 - 2026-11-10: **model routes no longer auto-create on provider import**. `batchRouteChannelModels` now takes `{createRoutes: false}` — the provider modal only records models in its catalog (`channel_imported_models_*`); the Models & Routing page's "Import All Discovered Models" is the explicit place to create live routes.
+- **2026-11-10 (later):** Admin UI polish batch — status badge redesign across all admin pages (Providers, Models, Logs, Keys, Usage, Billing), filter/table alignment fixes on Logs page, dropdown menu positioning fixed to trigger on scroll, "9Router" branding removed from Models page, checkbox alignment fixes. Commits `345c200`–`c863e36`. Build passes, typecheck clean.
 
 ## Decisions
 
