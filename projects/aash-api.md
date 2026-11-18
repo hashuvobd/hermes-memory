@@ -3,9 +3,50 @@
 - **Slug:** `aash-api`
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
-- **Last touched:** 2026-11-17 (discovery + uuid fix + import without auto-routes; Anthropic→OpenAI tool-translation 400 fix); 2026-11-18 (model identity masking, then strict response-level identity scrubbing + auto-derived client IDs — commit `e2a9e8f`)
+- **Last touched:** 2026-11-18 — identity masking → strict response scrubbing + client-id autofill (`e2a9e8f`, pushed, **not yet deployed**); route Client ID renamed to `claude-fable-5.2`; Cloudflare free-tier neuron quota exhausted, blocking live verification
 - **Repo / location:** `/home/shuvo/Projects/AASH-API` · https://github.com/hashuvobd/AASH-API
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, server actions via `@supabase/ssr`), Vercel
+
+## Resume here (last session 2026-11-18)
+
+**Where it stopped:** all code is committed and pushed (`e2a9e8f`) but **not deployed**. The route's
+Client ID rename to `claude-fable-5.2` is done in the DB and confirmed live. Live verification of the
+new scrubber is **blocked by upstream quota, not by a code defect**.
+
+Do these in order:
+
+1. **Deploy.** No Vercel CLI on the Windows box (`npx vercel` times out, no `node_modules/.bin/vercel`),
+   so deploy manually or via the Vercel dashboard. Three commits are git-only:
+   `e2a9e8f` (identity scrubber + client-id autofill), `4f58e82` (identity lock + intercept),
+   `a1a2ad5` (Anthropic→OpenAI tool-stub fix).
+2. **Restore upstream capacity.** The `custom` Cloudflare channel burned its free 10,000 neurons/day.
+   Either upgrade to Workers Paid, or add a non-Cloudflare channel (OpenRouter/Groq) and repoint the
+   route's failover to it (see the failover decision below).
+3. **Verify live**, once deployed and capacity is back:
+   - `POST /v1/chat/completions` + `model: "claude-fable-5.2"` -> 200
+   - `POST /v1/messages` + `model: "claude-fable-5.2"` -> 200
+   - Scrubber discriminator (unambiguous, does not depend on the model volunteering anything):
+     prompt `Output this exact string and nothing else: Qwen Alibaba Tongyi`.
+     Deployed -> echoes the display name three times. Not deployed -> raw vendor names come back.
+4. **Optional hardening** - router same-pool failover issue (see decision below).
+
+**Verification status at handoff:** `npx tsc --noEmit -p tsconfig.json` exit 0; `npx next build`
+exit 0 (all routes incl. `/admin/models`); 14/14 behavioural assertions against the compiled
+`identityScrubber` (vendor masking, split-chunk streaming, public-name double-substitution guard,
+plain-prose no-op). Live end-to-end: **not done** - 429 from upstream.
+
+## Live state of the three routes (2026-11-18)
+
+| Public model (display_name) | Client ID (model_id) | Status | Note |
+|---|---|---|---|
+| `Claude Fable 5.2` | `claude-fable-5.2` (renamed) | 429 | Cloudflare neurons exhausted |
+| `AASH-Personal` | `AASH-Personal` | 200 `OK` | different channel, unaffected |
+| `Fast-Response` | `Fast-Response` | 429 | also on the Cloudflare channel |
+
+`/v1/models` advertises `display_name` as the public id on purpose
+(`src/app/v1/models/route.ts:33-34`), so clients see `Claude Fable 5.2`, not the slug. Both strings
+resolve: `router.ts:30-72` matches `display_name`, then `model_id`, then a normalized alphanumeric
+fallback.
 
 ## Goal
 
@@ -34,6 +75,20 @@ A commercial multi-provider AI gateway (aashapi.com): one API key and one monthl
 - 2026-11-18 — **Strict identity scrubbing (layer 3)** in the new `src/lib/gateway/identityScrubber.ts`. The system-prompt lock and the identity-question intercept only cover direct probes; a base model can still volunteer its real name inside an unrelated long answer. Every response body is now rewritten before it leaves the gateway: `scrubModelIdentity()` replaces the upstream model id plus its vendor/family aliases (Qwen/Alibaba/Tongyi, GPT/OpenAI, Claude/Anthropic, Gemini/Google, DeepSeek, Llama/Meta, Mistral) with `resolved.route.display_name`, and `createStreamScrubber()` does the same for SSE deltas with a holdback buffer as long as the longest forbidden string, so an identity split across chunks ("Qw"+"en") cannot leak. A protect-sentinel prevents double substitution when the public name itself contains a vendor word ("Claude" in "Claude Fable 5.2"). Wired into both non-streaming paths and all four stream transforms (`createAnthropicTransformStream`, `createNativeAnthropicTapStream`, `createOpenAIMaskStream`, `convertCompletionToSSEStream`); the native Anthropic tap also rewrites `message_start.message.model`.
 - 2026-11-18 — **Client ID auto-derivation** in `src/app/admin/models/page.tsx`. The "Virtual Model Identifier (Client ID)" field now follows the Display Name through `slugifyClientId()` while `clientIdTouched` is false; typing in the field makes it an explicit override and clearing it re-syncs. Suggestion clicks derive from the suggestion's display name instead of its raw upstream id — that mismatch is what produced stray ids like `-cf-qwen-qwen3.8-27b`. Quick-route and new-route open in sync mode; editing an existing route preserves its stored id. Dots are kept in slugs to match the existing `gemini-2.5-flash` convention.
 
+- 2026-11-18 — **Failover across providers is the missing piece; a same-provider "failover" provides
+  no protection.** `router.ts` builds the cascade in two stages: a *same-provider pool* (line 103-196 —
+  `provider_channels` where `provider = targetChannel.provider`, further narrowed by `base_url` when
+  `provider = "custom"`, e.g. Cloudflare to `%cloudflare.com%`), then explicit *cross-provider* targets
+  from `route.fallback_targets` (line 198-249, the only path that can leave the pool because it selects
+  channels by id). During the 2026-11-18 outage `Claude Fable 5.2` and `Fast-Response` both died with
+  `4006 daily free allocation of 10,000 neurons` because the configured failover
+  (`google/gemma-4-26b-a4b-it`) is on the *same* Cloudflare account, i.e. the same neuron bucket.
+  Consequence: a route's backup must be a channel with a different `provider` (or at least a different
+  account) for quota/outage exhaustion to be survivable. Two known weaknesses, not yet fixed:
+  (a) same-pool keys are tried *before* explicit cross-provider targets (line 191-196 runs before
+  220-249), so a quota wall costs a failed round-trip before the good target is reached;
+  (b) nothing in the UI or router warns that a fallback target shares the primary's pool.
+
 ## Open questions
 
 - Stale rows: channels imported before the uuid fix still hold uuid entries in `channel_imported_models_*` (platform_settings) and `model_routes`. They need deleting by hand, or a cleanup action.
@@ -42,9 +97,16 @@ A commercial multi-provider AI gateway (aashapi.com): one API key and one monthl
 
 ## Next steps
 
-1. Re-run Test Connection, delete the old uuid-based imported models, then Publish Selected — model tests should return 200ms-range latencies instead of `5007`.
-2. Consider a first-class `cloudflare` provider option (auto-filled base URL from account id) instead of the `custom` dropdown, if more CF-specific behaviour appears.
-3. Remaining manual-model path: when a provider has no discovery route the modal shows amber, but there is still no "add model id by hand" control — the only way in is discovery.
+1. **Deploy `e2a9e8f`** (see Resume here). Nothing else is worth testing until it is live.
+2. **Restore capacity** on the Cloudflare channel or add a second provider; then repoint
+   `claude-fable-5.2`'s failover at it so a CF quota wall degrades instead of failing.
+3. **Live-verify the scrubber** with the `Qwen Alibaba Tongyi` echo probe on both wires.
+4. **Optional router hardening**: classify fallback targets as same-pool (key rotation) vs
+   cross-provider (real failover), try cross-provider first, and flag same-pool targets in the route
+   editor.
+5. Still open from 2026-11-10: delete stale uuid-based imported models; consider a first-class
+   `cloudflare` provider type; there is still no "add model id by hand" control when a provider has no
+   discovery route.
 
 ## Key paths and commands
 
@@ -71,5 +133,7 @@ supabase/migrations/              # schema; 20261106_admin_gateway.sql holds the
 - Cloudflare search entries carry an internal **uuid in `id`** and the invocable id in `name` (`@cf/...`). Storing `id` gives `5007 No such model <uuid> or task` on every call — the exact failure that surfaced after the first discovery fix.
 - `read_file`/grep over `src/components/*.tsx` returns huge minified marketing SVGs — search narrowly or you burn the context window.
 - Saving a channel is not gated by the connection test, so a red test never blocks a working config.
+- **`provider` + `base_url` define the routing pool, not the model.** For `custom` channels the pool is narrowed by `base_url`, so every Cloudflare channel shares one pool and one account quota. Model fallbacks inside a pool are key rotation; only `fallback_targets` crosses providers.
+- Cloudflare Workers AI free tier allows 10,000 neurons/day per account; exhaustion returns HTTP 429 with error code `4006` ("you have used up your daily free allocation"). The gateway passes the raw Cloudflare envelope through to the client, so a 429 body containing `"success":false` is expected, not a gateway bug.
 - Identity scrubbing is textual, not semantic: a base model that describes itself without naming a vendor ("a large language model built by a Chinese team") still gets through. Matching is case-insensitive with word boundaries for single-word aliases, so "Meta"/"Google" appearing as ordinary prose also become the display name — that is the intended cost of strictness.
 - The stream scrubber holds back up to (longest forbidden string − 1) chars, so a route pointing at a long upstream id (e.g. `claude-sonnet-4-5-20250929`, 26 chars) lags ~25 chars behind real time. `flush()` at the finish boundary and at stream end releases the remainder.
