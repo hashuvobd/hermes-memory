@@ -3,7 +3,7 @@
 - **Slug:** `aash-api`
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
-- **Last touched:** 2026-11-10 (discovery + uuid fix + import without auto-routes)
+- **Last touched:** 2026-11-17 (discovery + uuid fix + import without auto-routes; Anthropic→OpenAI tool-translation 400 fix)
 - **Repo / location:** `/home/shuvo/Projects/AASH-API` · https://github.com/hashuvobd/AASH-API
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, server actions via `@supabase/ssr`), Vercel
 
@@ -28,6 +28,7 @@ A commercial multi-provider AI gateway (aashapi.com): one API key and one monthl
 - 2026-11-10 — 404/405 from a discovery probe is treated as "no model list route", never as a bad key: HTTP routing/method resolution runs before auth, so the credential was never examined. Such channels are not quarantined.
 - 2026-11-10 — Cloudflare model ids keep the `@cf/` namespace; never strip or re-prefix them, they are the routing key on both `/ai/v1` and `/ai/run`.
 - 2026-11-10 — Resolve the upstream id by SHAPE (namespaced `@...`/`vendor/model` wins, uuid-shaped loses), not by field name: Cloudflare puts an internal uuid in `id` and the real id in `name`, and the previous `m.id || m.name` silently stored the uuid (`5007 No such model`).
+- 2026-11-17 — Fixed Anthropic→OpenAI tool translation 400 in `src/app/v1/messages/route.ts`: the mapper re-read Anthropic field names (`t.name`, `t.input_schema`) on OpenAI-shaped `enhancedTools` (MCP tools from `applyAgenticHarness`), emitting nameless `function` stubs that upstream OpenAI validators reject with `missing field 'function.name'`. The mapper now normalizes both Anthropic (`{name, input_schema}`) and OpenAI (`{type: "function", function: {name}}`) shapes and drops any stub still missing `function.name` before forwarding.
 
 ## Open questions
 
