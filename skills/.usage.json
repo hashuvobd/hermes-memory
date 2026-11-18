@@ -37,15 +37,15 @@
     "created_by": null,
     "first_seen_at": null,
     "last_patched_at": "2026-11-18T10:12:10.022282+00:00",
-    "last_reused_patch_generation": 6,
-    "last_used_at": "2026-11-18T10:10:50.009394+00:00",
-    "last_viewed_at": "2026-11-18T10:10:49.953088+00:00",
+    "last_reused_patch_generation": 9,
+    "last_used_at": "2026-11-18T10:56:03.446943+00:00",
+    "last_viewed_at": "2026-11-18T10:56:03.401298+00:00",
     "patch_count": 9,
     "patch_generation": 9,
     "pinned": false,
     "state": "active",
-    "use_count": 6,
-    "view_count": 6
+    "use_count": 7,
+    "view_count": 7
   },
   "project-memory": {
     "archived_at": null,
