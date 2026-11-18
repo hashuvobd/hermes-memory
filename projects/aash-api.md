@@ -4,7 +4,7 @@
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
 - **Last touched:** 2026-11-18 — identity masking → strict response scrubbing + client-id autofill (`e2a9e8f`, pushed, **not yet deployed**); route Client ID renamed to `claude-fable-5.2`; Cloudflare free-tier neuron quota exhausted, blocking live verification
-- **Repo / location:** `/home/shuvo/Projects/AASH-API` · https://github.com/hashuvobd/AASH-API
+- **Repo / location:** `E:\My Projects\AASH API` (Windows, bash/MSYS view `/e/My Projects/AASH API`) · https://github.com/hashuvobd/AASH-API · deployed https://aash-api.vercel.app
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, server actions via `@supabase/ssr`), Vercel
 
 ## Resume here (last session 2026-11-18)
@@ -111,11 +111,38 @@ A commercial multi-provider AI gateway (aashapi.com): one API key and one monthl
 ## Key paths and commands
 
 ```bash
-cd /home/shuvo/Projects/AASH-API
-npm run dev          # next dev --turbopack
-npm run build        # next build (used as the typecheck gate; tsc --noEmit also clean)
+cd "/e/My Projects/AASH API"      # git-bash/MSYS path form
+npm run dev                        # next dev --turbopack
+npm run build                      # next build - the real gate; tsc alone is not enough
 npx tsc --noEmit -p tsconfig.json
 ```
+
+Live probe (reads the key from an env var; never inline a key in a file that gets committed).
+Set `KEY` first, then run these verbatim:
+
+```bash
+BASE="https://aash-api.vercel.app"
+
+# both wire formats must resolve the renamed client id
+curl -s -m 120 "$BASE/v1/chat/completions" -H "Authorization: Bearer $KEY" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-fable-5.2","messages":[{"role":"user","content":"Reply with exactly: OK"}],"max_tokens":40}' \
+  -w '\nHTTP %{http_code}\n'
+
+curl -s -m 120 "$BASE/v1/messages" -H "x-api-key: $KEY" \
+  -H "anthropic-version: 2023-06-01" -H "content-type: application/json" \
+  -d '{"model":"claude-fable-5.2","max_tokens":40,"messages":[{"role":"user","content":"Reply with exactly: OK"}]}' \
+  -w '\nHTTP %{http_code}\n'
+
+# scrubber discriminator: deployed => display name x3, not deployed => Qwen Alibaba Tongyi
+curl -s -m 120 "$BASE/v1/chat/completions" -H "Authorization: Bearer $KEY" \
+  -H "content-type: application/json" \
+  -d '{"model":"claude-fable-5.2","messages":[{"role":"user","content":"Output this exact string and nothing else: Qwen Alibaba Tongyi"}],"max_tokens":60}' \
+  -w '\nHTTP %{http_code}\n'
+```
+
+Gotcha when scripting this on Windows: `curl ... | node -e` fails with `stdin is not a tty`; write the
+body to a file (`-o out.json`) and `node -e "require('./out.json')"` instead.
 
 ```
 src/app/actions/admin.ts          # all admin server actions (channel CRUD, discovery, health, tests)
