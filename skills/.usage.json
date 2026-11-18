@@ -38,14 +38,14 @@
     "first_seen_at": null,
     "last_patched_at": null,
     "last_reused_patch_generation": 0,
-    "last_used_at": "2026-11-17T11:13:22.066009+00:00",
-    "last_viewed_at": "2026-11-17T11:13:22.016282+00:00",
+    "last_used_at": "2026-11-18T09:18:31.770762+00:00",
+    "last_viewed_at": "2026-11-18T09:18:31.750105+00:00",
     "patch_count": 0,
     "patch_generation": 0,
     "pinned": false,
     "state": "active",
-    "use_count": 1,
-    "view_count": 1
+    "use_count": 3,
+    "view_count": 3
   },
   "project-memory": {
     "archived_at": null,
@@ -54,13 +54,13 @@
     "first_seen_at": null,
     "last_patched_at": "2026-11-10T11:26:20.941780+00:00",
     "last_reused_patch_generation": 11,
-    "last_used_at": "2026-11-18T03:50:45.270636+00:00",
+    "last_used_at": "2026-11-18T04:40:37.614852+00:00",
     "last_viewed_at": "2026-11-17T11:07:39.210490+00:00",
     "patch_count": 11,
     "patch_generation": 11,
     "pinned": false,
     "state": "active",
-    "use_count": 7,
+    "use_count": 8,
     "view_count": 5
   }
 }
