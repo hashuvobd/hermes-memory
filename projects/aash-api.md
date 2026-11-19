@@ -3,7 +3,7 @@
 - **Slug:** `aash-api`
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
-- **Last touched:** 2026-11-19 — role-aware persona resolution + stream boundary fix (`0ee8bcf`, pushed, **not deployed**); impersonating names now state their family's real creator, custom names state `AASH API`
+- **Last touched:** 2026-11-19 — identity leak audit closed; error bodies sanitized, CJK/Bengali tokens fixed, fail-closed masking, tool-arg and thinking scrubbing, Bengali identity probes (`6180da2`, pushed, **not deployed**)
 - **Repo / location:** `E:\My Projects\AASH API` (Windows, bash/MSYS view `/e/My Projects/AASH API`) · https://github.com/hashuvobd/AASH-API · deployed https://aash-api.vercel.app
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, server actions via `@supabase/ssr`), Vercel
 
@@ -85,6 +85,70 @@ naming a vendor is not caught, and org-vs-model sense of an ambiguous token
 **Gates:** `npx tsc --noEmit -p tsconfig.json` → 0; persona suite 26/26;
 `npx next build` → 0. Commit `0ee8bcf` pushed to origin/main. **Not deployed** —
 deploy is manual via the Vercel dashboard.
+
+## 2026-11-19 — Identity leak audit + fixes (commit 6180da2)
+
+**Audit found 6 live leaks, 6 hardening gaps, 2 cosmetic issues.** Everything below
+except the cache-key item is fixed and verified. Not deployed.
+
+### Confirmed live leaks (all fixed)
+1. **Upstream error bodies returned verbatim.** `chat/completions` returned the raw
+   Cloudflare envelope: `{"errors":[{"message":"AiError: AiError: {\"error\":{...}}","code":8007}],
+   "success":false,"result":{},"messages":[]}`. Proven with a live 400
+   (`temperature: 99`). Now `src/lib/gateway/errorSanitizer.ts` unwraps the message,
+   strips the envelope/uuids/URLs, scrubs identities, maps the status to a type, and
+   emits OpenAI- or Anthropic-shaped errors.
+2. **Every CJK/Bengali alias was dead code.** `tokenPattern()` prefixed tokens with
+   `\b`, and `\b` never matches before a CJK char (CJK is not `\w`):
+   `/\b通义千问/.test("我是通义千问")` → false. Fixed: `\b` only for ASCII-led tokens.
+3. **Scrubber failed open.** With no `upstreamModel` it produced zero replacements and
+   returned text untouched. Now platform/framework tokens are ALWAYS present, and an
+   unknown upstream masks every family except the impersonated one.
+4. **Platform names were in no list** — Cloudflare, Workers AI, Groq, OpenRouter,
+   Nous, Kimi, GLM, etc. all passed through. Now `PLATFORM_TOKENS` +
+   `FRAMEWORK_MODEL_TOKENS` (Hermes/Nous, which the *base prompt itself* injects).
+5. **Tool-call arguments never scrubbed** in any of the four paths.
+6. **Native Anthropic thinking deltas never scrubbed** (`delta.thinking`,
+   `content_block.thinking`).
+
+### Hardening (fixed)
+- Version tails consumed whole: `Qwen3-235B` used to become `<name>3-235B`.
+- Cache HIT paths re-scrub (both endpoints); `system_fingerprint` stripped.
+- `/v1/models` `owned_by` now reports the impersonated family's creator
+  (`anthropic`) instead of always `aash-api`.
+- 502 fallback no longer embeds `lastError.message` (upstream hostnames).
+- Anthropic non-streaming `msg_` ids no longer carry the upstream id prefix.
+
+### Still open
+- `computeCacheKey` hashes model+messages+tools+system only, not the channel id.
+  Re-pointing a route at a new upstream serves up to 24h of the old backend's
+  cached output. Not an identity leak once scrubbing is on, but stale.
+- Scrubber is textual: a vendor-free self-description ("a Chinese open-weights
+  model") is not caught. Prompt-lock is the only defence for that phrasing.
+
+### Identity probe (`src/lib/gateway/identityProbe.ts`, new)
+Extracted from agentMiddleware so it is unit-testable. `detectIdentityQuestion()`
+strips engagement filler, trailing punctuation (`?!.।؟`), lowercases, then tests
+English / Bengali / Chinese pattern sets.
+
+Bengali coverage: তুমি কে?, আপনি কে?, তোমার নাম কি?, তুমি কোন মডেল?, তুমি কি এআই?,
+তুমি কি ক্লড?, তোমাকে কে তৈরি করেছে?, কোন কোম্পানি তোমাকে বানিয়েছে,
+তোমার আসল পরিচয় কি, তুমি কোথায় হোস্ট, কোন মডেল ব্যবহার করো.
+
+### Verification
+- `src/lib/gateway/*` compiled standalone and run in `/tmp/scrubtest`: **85 passed, 0 failed**
+  (`test2.js` covers persona, CJK, Bengali, version tails, fail-closed, platform
+  names, stream splits, all three probe languages, and the error sanitizer).
+- `npx tsc --noEmit -p tsconfig.json` → 0.
+- `npx next build` → 0.
+- Compiled plans are cached by `(publicName, upstreamModel, provider)`, so a stream
+  no longer rebuilds ~40 RegExps per delta.
+
+### Gotcha for the next session
+Live probes read the key from the env var
+`HERMES_CUSTOM_AASH_API_VERCEL_APP_API_KEY`. The files in this repo may be CRLF on
+disk — `read_file` normalises it, so `execute_code` string anchors containing `\n`
+fail silently. Normalise with `.replace("\r\n","\n")` and write with `newline="\n"`.
 
 ## Live state of the three routes (2026-11-18)
 
