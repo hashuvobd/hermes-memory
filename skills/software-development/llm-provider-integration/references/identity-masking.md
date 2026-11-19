@@ -26,6 +26,10 @@ Derive it per request from the route, not from a global constant:
   - *model tokens* (`qwen`, `tongyi`, `gpt`, `chatgpt`, `claude`, `gemini`, `deepseek`, `llama`, `mistral`, `grok`, `kimi`, `glm`, `yi`, `ernie`, `nova`, `phi`, `doubao`, `hunyuan`, `minimax`, `perplexity`, `cohere`, `command`, `jamba`, `solar`, `aash-personal`) → map to the route's display name
   - *creator tokens* (`alibaba`, `alibaba cloud`, `alibaba group`, `openai`, `anthropic`, `google`, `deepmind`, `meta`, `meta ai`, `mistral ai`, `deepseek`, `xai`, `x.ai`, `moonshot ai`, `zhipu ai`, `baichuan`, `01.ai`, `baidu`, `tencent`, `byte dance`, `nous research`, `aash api`) → map to the creator derived from the display name (`resolvePublicPersona(name).creator`)
 - the **platform/host names** that the upstream runs on — these are a leak channel independent of the model family: `cloudflare`, `workers ai`, `groq`, `openrouter`, `together`, `fireworks`, `cerebras`, `bedrock`, `vertex`, `azure`, `sambanova`, `tenstorrent`. A model frequently answers "I am served by Cloudflare Workers AI" with no model or vendor word at all.
+- the **same vendors written in another script**, once a route serves users who type one: Chinese
+  (`通义千问`, `通义`, `阿里云`, `阿里巴巴`) and Bengali transliterations (`কিউয়েন`, `আলিবাবা`, `ক্লড`, `মেটা`, `গুগল`, `কিমি`).
+  Transliterations are not standardised — seed the list and extend it from observed output rather than
+  guessing every variant.
 - organisation phrases: any creator token immediately followed by `lab`, `labs`, `research`, `team`, `group` (`tongyi lab`, `nous research`, `zhipu ai group`, `google deepmind lab`) → map to the **creator**, not the model name. Otherwise "Tongyi Lab" becomes "Claude Fable 5.2 Lab".
 
 Sort **longest source string first** so the full id is replaced before the bare family word. Only include the
@@ -94,6 +98,13 @@ flush():
 Cost is latency proportional to the longest id (~25 chars for `claude-sonnet-4-5-20250929`).
 A leaked name is not acceptable.
 
+Scrubbing runs **per delta**, so it must not rebuild its token list per call — constructing several
+dozen `RegExp` objects on every chunk costs more than the substitution itself and shows up as stream
+latency. Compile the replacement plan once per `(displayName, upstreamModel, provider)` into a small
+bounded cache and reuse it. Sharing the compiled global regexes across calls is safe because
+`String.prototype.replace` resets `lastIndex`; `RegExp.test` does not, so never reuse a compiled
+global pattern for testing.
+
 ### Five edge cases, each one breaks a live client
 
 1. **Finish boundary.** Flush the scrubber and append the tail into the chunk that carries
@@ -158,8 +169,23 @@ proves nothing about the shipped code. Compile the real module and assert agains
    - **error envelope** (Cloudflare `AiError` body → mapped + scrubbed)
    - **cache read** (stored body re-scrubbed on read)
 
+6. **Invoke the compiler from the project root** — the directory whose `node_modules` holds
+   `typescript` — passing the scratch config by absolute path. `npx tsc` run from the scratch dir has
+   no local compiler and installs an unrelated `tsc` package that only prints "This is not the tsc
+   command you are looking for", exiting 1.
+7. **A lib module that imports through the app alias (`@/lib/...`) cannot be `require()`d after
+   emit** — the alias is preserved verbatim and node cannot resolve it. Use a relative import
+   (`./identityScrubber`) inside the lib; the framework resolves relative paths fine.
+8. **A gateway that scrubs its own traffic also scrubs tool output.** Reading a source file back
+   through such a gateway can show a vendor name already substituted (a real host appearing as the
+   product's own name), so an exact-match anchor copied from the echo will not match the bytes on
+   disk. Author anchors from `git diff` or from vendor-free context lines, and treat a failed match
+   as stale echo before assuming the file changed.
+
 On Linux/macOS the native path step is unnecessary — the same harness works cross-platform if the
 config is built with native paths at runtime.
 
 `npx next build` is the real gate; `tsc --noEmit` alone is insufficient because it does not
-exercise the streaming transforms at runtime.
+exercise the streaming transforms at runtime. A green typecheck is not a finish: run the behavioural
+suite and the build, and commit, before reporting the fix — a typecheck-only report reads as
+unfinished work and invites the user to ask whether you actually completed it.
