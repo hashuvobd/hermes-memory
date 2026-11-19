@@ -3,7 +3,7 @@
 - **Slug:** `aash-api`
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
-- **Last touched:** 2026-11-18 — identity masking → strict response scrubbing + client-id autofill (`e2a9e8f`, pushed, **not yet deployed**); route Client ID renamed to `claude-fable-5.2`; Cloudflare free-tier neuron quota exhausted, blocking live verification
+- **Last touched:** 2026-11-19 — role-aware persona resolution + stream boundary fix (`0ee8bcf`, pushed, **not deployed**); impersonating names now state their family's real creator, custom names state `AASH API`
 - **Repo / location:** `E:\My Projects\AASH API` (Windows, bash/MSYS view `/e/My Projects/AASH API`) · https://github.com/hashuvobd/AASH-API · deployed https://aash-api.vercel.app
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, server actions via `@supabase/ssr`), Vercel
 
@@ -34,6 +34,57 @@ Do these in order:
 exit 0 (all routes incl. `/admin/models`); 14/14 behavioural assertions against the compiled
 `identityScrubber` (vendor masking, split-chunk streaming, public-name double-substitution guard,
 plain-prose no-op). Live end-to-end: **not done** - 429 from upstream.
+
+## 2026-11-19 — Role-aware persona (commit 0ee8bcf)
+
+**Requirement (user, verbatim):** an impersonating display name must state a *correct*
+identity — "since its impersonating claude it should fully copy claudes identity from
+model id to creator, or anyother model its impersonating. but if the display name is
+something custom set and does not match any known models or ai then it will say its
+display name and as the creator or provider it will say AASH API."
+
+**Design — replacement is role-aware, never a blind swap** (`src/lib/gateway/identityScrubber.ts`):
+- `FAMILIES` table: claude/Anthropic, gpt/OpenAI, gemini/Google, qwen/Alibaba Cloud,
+  llama/Meta, mistral/Mistral AI, deepseek/DeepSeek, grok/xAI. Each entry carries
+  `modelTokens`, `creatorTokens`, and the canonical `creator` to credit.
+- `resolvePublicPersona(displayName)` → `{ modelName, creator, impersonates }`.
+  Display name matches a family ⇒ impersonate it **including its creator**;
+  otherwise ⇒ display name + creator `AASH API`.
+- `scrubModelIdentity(text, opts)`: upstream **model** tokens → `modelName`;
+  upstream **creator** tokens → `persona.creator`. Org phrases
+  (`<token> lab|labs|research|team|group`) → creator, so "Tongyi Lab" becomes
+  "Anthropic", not the model name.
+- Longest source first; existing public-name occurrences protected by a sentinel so
+  a vendor word inside the name is not expanded twice.
+
+**Verified behaviour (26 assertions, `RESULT: 26 passed, 0 failed`):**
+| display name | creator | "I'm Qwen — developed by Alibaba Group." becomes |
+|---|---|---|
+| `Claude Fable 5.2` | Anthropic | "I'm Claude Fable 5.2 — … developed by Anthropic." |
+| `GPT-4o Gateway` | OpenAI | "I'm GPT-4o Gateway — … developed by OpenAI." |
+| `AASH Fable 5.2` | AASH API | "I'm AASH Fable 5.2 — … developed by AASH API." |
+
+**Stream bug found & fixed:** holding back `maxLen-1` chars was insufficient — the
+scrubber emitted the partial token `Qwe` while `n` sat in the next chunk, so "Qwen"
+survived. Fix: after computing the emission boundary, walk it back over the longest
+suffix that is a *proper prefix* of any source token (`prefixes` set), then emit.
+
+**Layer alignment:** `src/lib/gateway/agentMiddleware.ts` now derives the same persona
+via `resolvePublicPersona(modelName || "")` — the Layer-1 lock interpolates
+`creator`/`impersonates`, and the Layer-2 identity intercept answers
+"I'm <name>, a model by <creator>, served through the AASH API Gateway."
+
+**Also fixed:** non-streaming `/v1/chat/completions` now deletes Cloudflare
+fingerprints — `usage.neurons`, `choice.token_ids`, `choice.stop_reason`,
+`choice.routed_experts` (were leaking the upstream provider).
+
+**Known limitation:** matching is textual. A model that describes itself without
+naming a vendor is not caught, and org-vs-model sense of an ambiguous token
+("Tongyi Lab") is inferred only from a suffix word list.
+
+**Gates:** `npx tsc --noEmit -p tsconfig.json` → 0; persona suite 26/26;
+`npx next build` → 0. Commit `0ee8bcf` pushed to origin/main. **Not deployed** —
+deploy is manual via the Vercel dashboard.
 
 ## Live state of the three routes (2026-11-18)
 
