@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +46,13 @@ def git(repo: Path, *args: str) -> str:
         return ""
 
 
+def resolve_path(cfg: dict) -> Path | None:
+    """Per-host override wins, so one registry can serve several machines."""
+    overrides = cfg.get("paths") or {}
+    chosen = str(overrides.get(socket.gethostname()) or cfg.get("path") or "").strip()
+    return Path(chosen).expanduser() if chosen else None
+
+
 def main() -> int:
     if not REGISTRY.exists():
         return 0
@@ -56,8 +64,10 @@ def main() -> int:
 
     lines: list[str] = []
     for slug, cfg in sorted(data.get("projects", {}).items()):
-        path = Path(str(cfg.get("path", ""))).expanduser()
-        if not str(path) or not (path / ".git").exists():
+        path = resolve_path(cfg)
+        if path is None:
+            continue
+        if not (path / ".git").exists():
             continue
         # refresh remote-tracking refs so a push from anywhere counts as activity
         git(path, "fetch", "--quiet", "--prune")
