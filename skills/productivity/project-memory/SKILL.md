@@ -42,6 +42,31 @@ The scheduled job `project-memory-sync` covers rule 2 automatically: every 30 mi
 
 On Windows that is `C:\Users\<user>\hermes-memory\projects\`. The same paths appear on any machine after `git clone` plus `python sync.py --restore`.
 
+## Registry on more than one machine
+
+One `repos.json` is shared through the memory repo, so a machine-local `path`
+written on one host (a Windows drive path, a different home directory) silently
+disables the monitor on the other: the path does not exist, the entry is skipped,
+and nothing warns. Use a per-host override so one registry serves every machine:
+
+```json
+{
+  "path": "<default clone path for this project>",
+  "paths": {
+    "<this-host>": "/home/shuvo/Projects/skybridge-portal"
+  },
+  "remote": "https://github.com/...",
+  "recorded_sha": "..."
+}
+```
+
+- `path` is the fallback default, used when the hostname is not in `paths`.
+- `paths[socket.gethostname()]` is checked first; the monitor resolves it before
+  falling back to `path`.
+- When registering a project, fill both keys if you know the other machine's
+  hostname and clone location. Never repoint `path` at the machine you happen to
+  be on when another host already relies on it.
+
 ## Read path (start of work)
 
 1. Read `INDEX.md`. It is short by design.
@@ -105,6 +130,14 @@ builds a throwaway repo with backdated commits, asserts the monitor fires, that 
 repeated idle tick produces byte-identical output, and that it goes silent once
 `recorded_sha` advances to HEAD. It restores the registry on the way out.
 Re-run it after every edit to the monitor.
+
+To prove the positive path by hand without waiting out the quiet window, run the
+monitor with the threshold forced to zero
+(`PROJECT_MEMORY_QUIET_MINUTES=0 python3 "$HERMES_HOME/scripts/project_memory_monitor.py"`):
+it must name every repo whose HEAD is ahead of its baseline, and two consecutive
+runs must be byte-identical. If that prints nothing while a baseline is genuinely
+behind, the path resolved to nothing on this host — check `paths` for this
+hostname before concluding the repos are quiet.
 
 Traps it exists to catch:
 
