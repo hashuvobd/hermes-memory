@@ -42,31 +42,6 @@ The scheduled job `project-memory-sync` covers rule 2 automatically: every 30 mi
 
 On Windows that is `C:\Users\<user>\hermes-memory\projects\`. The same paths appear on any machine after `git clone` plus `python sync.py --restore`.
 
-## Registry on more than one machine
-
-One `repos.json` is shared through the memory repo, so a machine-local `path`
-written on one host (a Windows drive path, a different home directory) silently
-disables the monitor on the other: the path does not exist, the entry is skipped,
-and nothing warns. Use a per-host override so one registry serves every machine:
-
-```json
-{
-  "path": "<default clone path for this project>",
-  "paths": {
-    "<this-host>": "/home/shuvo/Projects/skybridge-portal"
-  },
-  "remote": "https://github.com/...",
-  "recorded_sha": "..."
-}
-```
-
-- `path` is the fallback default, used when the hostname is not in `paths`.
-- `paths[socket.gethostname()]` is checked first; the monitor resolves it before
-  falling back to `path`.
-- When registering a project, fill both keys if you know the other machine's
-  hostname and clone location. Never repoint `path` at the machine you happen to
-  be on when another host already relies on it.
-
 ## Read path (start of work)
 
 1. Read `INDEX.md`. It is short by design.
@@ -131,14 +106,6 @@ repeated idle tick produces byte-identical output, and that it goes silent once
 `recorded_sha` advances to HEAD. It restores the registry on the way out.
 Re-run it after every edit to the monitor.
 
-To prove the positive path by hand without waiting out the quiet window, run the
-monitor with the threshold forced to zero
-(`PROJECT_MEMORY_QUIET_MINUTES=0 python3 "$HERMES_HOME/scripts/project_memory_monitor.py"`):
-it must name every repo whose HEAD is ahead of its baseline, and two consecutive
-runs must be byte-identical. If that prints nothing while a baseline is genuinely
-behind, the path resolved to nothing on this host — check `paths` for this
-hostname before concluding the repos are quiet.
-
 Traps it exists to catch:
 
 - **The baseline is the newest commit you can see, not the remote's.** A `recorded_sha` taken from
@@ -160,6 +127,23 @@ cd ~/hermes-memory && python sync.py
 ```
 
 Mirrors Hermes memory and skills, commits, pushes. Project files are already inside the repo, so a plain `git add -A && git commit && git push` covers them when sync.py is not wanted.
+
+### Check the remote before you write
+
+This repo is shared across machines, and the copy in front of you is routinely the older one. Before
+updating a project file, `git fetch` and compare with
+`git rev-list --left-right --count HEAD...origin/<branch>` — the right-hand number is work that exists
+only on the remote, and a file written on top of a stale tree overwrites it and pushes that overwrite.
+
+- **Remote ahead, local behind, worktree clean:** import rather than write — `git pull --ff-only`, or
+  `git reset --hard origin/<branch>` when the local branch carries a commit you have been told to discard.
+  Re-read the project file afterwards: the update you were about to compose is usually already there and
+  better informed, because the machine that did the work wrote it.
+- **Local ahead with your own commits:** push normally.
+- **Both ahead:** stop and say so. That is a real divergence and the user has to choose which record wins.
+
+Never assume the local file is current because it is the one in front of you, and never push this
+machine's copy over the other machine's record without being asked to.
 
 ## Boundaries
 

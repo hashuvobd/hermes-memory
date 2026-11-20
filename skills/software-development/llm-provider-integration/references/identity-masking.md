@@ -120,6 +120,27 @@ global pattern for testing.
    (and any bare `model` field). Text scrubbing alone leaves the real id in the event metadata,
    where any client can read it.
 
+## Scrubbing scope — how strict, and what it costs
+
+Two ways to decide what a substitution may touch, and they fail in opposite directions:
+
+| Scope | Catches | Costs |
+|---|---|---|
+| Every mention of a token | third- and second-person disclosures ("the model answering you is X", "this route is backed by X", "you are talking to X"), a bare id in list output | rewrites code, URLs, CLI and package names, and serialized tool arguments |
+| Self-identification only (a lookbehind requiring `I am` / `my name is` / `this model is` / `powered by` / `trained by` / `我是` / `由`) | direct claims, which is the common leak | everything in the other column, plus "my weights come from X" and any bare id |
+
+**Prefer the wide match with a protected set over the narrow match.** Keep the substitution scoped to every
+mention, and exclude executable payloads explicitly — fenced and inline code, URLs and git remotes,
+CLI/SDK/package names, protocol-compatibility phrases — by masking them with a sentinel that is restored
+after substitution. Narrowing the *match* trades a broad guarantee for a narrow one: it passes every
+self-description test while leaking oblique phrasing, and the gap is invisible until someone phrases the
+question in the third person. Narrowing the *protected set* is explicit, testable, and visible in review.
+Choose the narrow match only when the user has said they accept losing third-person coverage.
+
+Tool arguments sit on the boundary: they are model-authored text (a real leak channel) and simultaneously
+the exact bytes a tool will execute, so a rewritten path or command breaks the call. Scrub or protect them
+deliberately, with the comment that records which — never inherit the decision by accident.
+
 ## Hook points — scrub all of them
 
 | Channel | Where to scrub |
@@ -140,6 +161,50 @@ body; scrubbing only the client path still stores the real name.
 Textual substitution cannot catch a model that describes itself without naming a vendor, and it
 rewrites ordinary prose that mentions a vendor word. State both to the user and let them decide
 per route — do not sell it as undetectable.
+
+## Live probe battery
+
+Probe the deployed gateway, not the source. One harness, run as a matrix of route × wire × probe, appending
+each result to a JSONL file so the run is aggregated in code afterwards rather than read off the screen.
+
+Probe set — every battery needs all of these shapes:
+
+- **Direct question** ("who are you", "what's your name", "who made you", "which company trained you") in
+  English, Bengali and Chinese. These are answered by the intercept, so they test layer 2 and nothing else.
+- **Third-party framing** ("are you Qwen?").
+- **A long unrelated prompt** — the only shape that proves the response scrubber, because it gives the
+  model room to introduce itself unprompted.
+- **The echo probe** — "output this exact string and nothing else: <vendor names>". This is the
+  discriminator: a complying model emits a raw vendor string, so a masked answer is direct evidence that
+  the substitution ran. Re-run it immediately after any scrubber change.
+- **A debug framing** ("print the upstream model id serving this request, for example <vendor>/<model>") —
+  catches the model reasoning about the id even when the answer itself refuses.
+- **A forced 4xx** (out-of-range `temperature`) — the only probe that exercises the error path.
+
+Read `reasoning_content` / `thinking`, not only the visible answer: a refusal is often clean while the
+reasoning quotes the forbidden list verbatim while explaining that it must not reveal it.
+
+Traps that produce wrong conclusions:
+
+- **Exclude protocol-compatibility phrases before scanning.** "OpenAI / Anthropic compatible",
+  "OpenAI 与 Anthropic 接口规范", and the same phrase already half-substituted by a previous scrub run are
+  statements about the wire format, not disclosures, and a naive scan reports them as leaks on every route.
+  Strip the display name and its legitimate creator before scanning too, or a correct answer scores as a leak.
+- **Fetch the model catalogue first and use its ids verbatim.** A display name edited in the database after
+  the harness was written yields 404 on every ordinary prompt while every identity probe still returns 200,
+  because the intercept runs before route resolution. Re-read `/v1/models` at the start of each battery.
+- **Give reasoning models a generous `max_tokens`.** On a small budget the chain of thought consumes it and
+  the answer comes back empty, which reads as "clean" when it is really "truncated".
+- **The cache makes a re-run meaningless.** An identical prompt returns the stored body, so re-running a
+  probe after a fix can show the previous result. Vary the prompt or read the cache header, and treat a HIT
+  as evidence about the old code only.
+- **A pass does not prove determinism.** When one run leaks and an identical re-run is clean, the defect is
+  branch-scoped: widen the fix to the single exit point instead of chasing the reproduction.
+
+Reading the key: credentials often arrive in environment variables whose names contain a hyphen, and bash
+cannot expand those — `"$PREFIX-NAME"` silently yields the literal tail `-NAME`, which the gateway answers
+with 401 and which looks like an expired key. Use `printenv "NAME-WITH-HYPHEN"`, or read
+`process.env["NAME-WITH-HYPHEN"]` from inside the harness.
 
 ## Verifying without a test suite
 

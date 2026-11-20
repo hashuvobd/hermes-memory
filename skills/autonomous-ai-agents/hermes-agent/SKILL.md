@@ -238,7 +238,6 @@ plainly when there is no remote or API effect, and hand over the unset/revert
 command.
 
 - Prefer the reversible local write over the remote or scope-widening one.
-- **Read a sync/restore script before you run it, and treat every mirror as a delete.** A reverse copy from a repo into `$HERMES_HOME` removes local files the repo does not have — skills written since the last sync, mid-session memory edits — and `unlink` leaves no copy in git, `state.db`, or the curator backups. Say what it deletes, snapshot the target directory first, diff repo against home afterwards. Steps: `references/memory-and-cross-device-sync.md`.
 - Do not widen a token's scopes to solve a problem that does not need them;
   recommend against it and leave the credential alone.
 - Prove the consequence cheaply where you can — a throwaway commit in

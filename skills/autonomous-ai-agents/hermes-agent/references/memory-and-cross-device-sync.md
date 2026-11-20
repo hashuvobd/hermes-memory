@@ -64,38 +64,6 @@ Never sync `.env`, `auth.json`, `sessions/`, `state.db`, or browser data.
   scripts, recreate the jobs. Cron jobs and `$HERMES_HOME/scripts/` are **not**
   inside `memories/` or `skills/`, so they do not travel on their own.
 
-## Restoring onto a machine that already has state
-
-`--restore` runs the same mirror in the opposite direction (repo → `$HERMES_HOME`).
-The wanted-set sweep is not directional: **every file under `skills/` or
-`memories/` that is absent from the repo is deleted**. On a fresh machine that is
-harmless. On one that has been used, it destroys everything created since the last
-sync — agent-written skills, mid-session memory edits, anything pulled from a
-different catalog.
-
-1. **Snapshot first.** `cp -a "$HERMES_HOME/skills" "$HERMES_HOME/skills.bak-$(date +%s)"`
-   and the same for `memories/` (or `hermes backup`). The sweep calls `unlink`: the
-   file is not in git unless it was committed, not in `state.db`, and not in
-   `~/.hermes/.curator_backups` unless the curator wrote it. Un-snapshotted state is gone.
-2. Restore, then **diff repo against home** (`diff -rq <repo>/skills "$HERMES_HOME/skills"`)
-   and reconcile the "only in home" lines before anything else — the sweep leaves
-   empty directories where it removed files, which is the visible trace of the loss.
-3. Reinstall what lives outside `memories/` and `skills/`: copy each script into
-   `$HERMES_HOME/scripts/`, then recreate the cron jobs (cron never travels).
-4. Set the **repo-local git identity** in the fresh clone (`git -C <repo> config
-   user.name … && git -C <repo> config user.email …`). A clone carries no identity
-   and the first commit dies with "Author identity unknown".
-5. Prove the round trip before pushing: `python sync.py --no-push` must print
-   "nothing changed, no commit". If it wants to commit, restore and repo disagree —
-   do not push that disagreement.
-6. Verify a push from the remote, not from `git push`'s exit code
-   (`gh api repos/<owner>/<repo>/commits/HEAD --jq .sha`).
-7. Memory is a session-start snapshot; the restored entries are invisible to the
-   running session. Tell the user to start a new one, and that `/new` reloads skills too.
-8. On a cross-OS restore, re-read the restored `MEMORY.md` for facts that were only
-   true of the old machine (drive letters, install paths, a CLI that is not installed,
-   shell flavour) and correct them next session instead of letting them steer this one.
-
 ## Per-project notes ride along
 
 When the user wants continuity per project rather than only agent memory, the same
@@ -106,8 +74,3 @@ skill before touching it. Two consequences for the sync itself: project files ar
 already inside the repo, so a plain `git add -A && git commit && git push` covers
 them; and a script the sync depends on should be kept as a copy under the repo's
 `scripts/` so a restore on a new machine has the source, not just the installed copy.
-
-One registry file serves every machine, so a machine-local `path` written by one
-host silently disables the monitor on the other (path missing → entry skipped, no
-warning). Keep `path` as the default and add a per-host override the monitor
-consults first — details in the `project-memory` skill.

@@ -32,22 +32,6 @@ Auth: `Authorization: Bearer <API_TOKEN>` with **Workers AI: Read** (or Write). 
 - `task.name` is the only reliable classifier: `Text Generation` → chat, `Text Embeddings` → embedding, others image/audio. Only text generation should auto-enable as a chat route.
 - Prefer the **default** shape over `format=openrouter` when you also need `task` and `properties`; the marketplace shape drops the classification you need for tier tags.
 
-## Quota, deprecation, and why the catalog lies
-
-The search endpoint and the inference endpoint draw on **different meters**, and this breaks any discovery-based health check:
-
-- `GET .../ai/models/search` is free and unmetered — it answers `200` with the full catalog while the account can generate nothing at all.
-- Inference bills **neurons** against a daily free allocation. When it is spent, every `POST .../chat/completions` answers `429` with `errors[0].code: 4006` and the text `you have used up your daily free allocation of 10,000 neurons`. `402` appears for billing walls.
-- The allowance is **per account**, and the account id is embedded in the base URL — so two keys on two accounts are two quotas, while two keys on one account share one. A pool keyed on provider+base_url inherits that sharing.
-- Reset boundary is **00:00 UTC**. A cooldown shorter than that guarantees quarantine/healthy flapping; hold the channel to the reset instead.
-- What *does* reflect entitlement is `/ai/v1/models` answering `405`/`7001` regardless of token — which is why method errors must never be read as quota or auth signals.
-
-Deprecation churn is high and fast. `.../ai/models/search` carries per-model deprecation properties; invoking a retired id answers `HTTP 410` with `errors[0].code: 5028` (`Model has been deprecated: <id> was deprecated on <date>`), and the sibling `@cf/qwen/...` family can rotate within days. Two consequences:
-
-- Never hardcode a Workers AI probe model without checking it against the live catalog first — a same-day deprecation makes every probe fail on a cause unrelated to the credential.
-- Treat `5028`/`410` as a **model-id** fault, not a key fault: fix the route's `upstream_model_name`, and do not quarantine the credential for a whole day over it.
-- `5007` (`No such model <x> or task`) is the different fingerprint for a wrong id shape (uuid stored instead of the `@cf/...` name, or a stripped namespace) — that means the route is misconfigured, not the account.
-
 ## Error envelopes (all JSON with `success: false`)
 
 | Code | Message / trigger | Meaning |
