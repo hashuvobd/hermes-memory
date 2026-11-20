@@ -3,18 +3,22 @@
 - **Slug:** `aash-api`
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
-- **Last touched:** 2026-11-20 — server-side browser engine + autonomous tool interception; tool function-name sanitization/dedupe at one choke point; multimodal 400 auto-cascade; identity family attribution split; model catalogue caching; security audit committed (`51e9f43`, == `origin/main`, clean tree)
+- **Last touched:** 2026-11-20 — Code Mode sandbox added (uncommitted): isolated V8 VM with fetch, aash.search/browserPreview/now, Buffer/URL; exposed via MCP `code_mode_execute` and intercepted in chat-completions; `codeModeService.ts` new; system prompt updated; security audit committed (`51e9f43`, == `origin/main`, uncommitted work in 8 files + 1 new)
 - **Repo / location:** `E:\My Projects\AASH API` (Windows, bash/MSYS view `/e/My Projects/AASH API`) · https://github.com/hashuvobd/AASH-API · deployed https://aash-api.vercel.app
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, `@supabase/ssr`), Vercel. Added since 2026-11-10: `@vercel/analytics`.
 
 ## Resume here (2026-11-20)
 
-**Where it stopped.** Clean tree; HEAD `51e9f43` == `origin/main` (9 commits since `f4c3de4`; 12 files, +1857/−280). `next build` → exit 0 on this HEAD, verified locally and **not live** (no API key in this environment).
+**Where it stopped.** HEAD `51e9f43` == `origin/main`, but the worktree is **dirty**: Code Mode work started ~21:39 and was never committed (8 modified files +203/−46, plus new `src/lib/gateway/codeModeService.ts`). `next build` exit 0 was verified on the *committed* HEAD only — the dirty tree is unbuilt and unverified.
+
+**Code Mode (uncommitted, this is the next thing to finish).** `codeModeService.ts` (237 lines) runs model-written JS/TS in a `node:vm` context: 1–15 s timeout (default 8 s), console capture, a `fetch` wrapper allowing only `http(s):` with a 10 s abort, and `aash.{search,browserPreview,now,context}`. Wired in three places, mirroring the browser engine: the MCP `code_mode_execute` tool, `handleGatewayCodeModeToolCall` in `/v1/chat/completions` (forces a non-streaming upstream fetch when the tool set includes it, then re-issues the follow-up completion), and `executeMcpToolCall` step 2 in `agentMiddleware.ts`. System prompt section 4 was rewritten to advertise it. Five alias names (`code_mode`, `codemode`, `execute_code`, `run_code`) resolve to the same handler.
+- **Not wired into `/v1/messages`** — Anthropic-protocol clients get the tool in their schema but no interception, so the call goes upstream instead of executing.
+- Six page files (`admin/alerts`, `admin/{skills,plugins}`, `dashboard/{skills,plugins}`) only lose header badges — cosmetic, unrelated to Code Mode.
 
 **Landed since `f4c3de4`:**
 - **Server-side browser engine** (new `browserService.ts`): `executeBrowserPreview({url|html,width,height})` resolves a system Chrome/Edge binary from fixed Windows/macOS/Linux paths, runs `execFile --headless=new --no-sandbox --screenshot=… <url>` (15s timeout, no shell), returns a base64 PNG plus a 3 000-char DOM summary. Wired in three places: the MCP `browser_preview`/`browser_screenshot` tools, the chat-completions tool intercept (`isBrowserToolCall`), and `executeMcpToolCall` in `agentMiddleware.ts`. Admin MCP list synthesizes an "AASH Built-in Headless Browser Engine" row (`admin.ts:getMcpServers`).
 - **Autonomous MCP tool interception** — the gateway executes tool calls itself; directives were softened (`a1ffb37`) so a model lacking browser access adapts instead of halting.
-- **Tool function-name normalization** (`443cefa`→`893f745`, four commits): every name is coerced to `^[a-zA-Z0-9_-]{1,64}$` and deduplicated (`_2`, `_3`) inside `normalizeUpstreamPayload` — tools array, `tool_calls[].function.name`, `role:"tool".name`, `tool_choice` — with round-trip mapping preserving the caller's original names.
+- **Tool function-name normalization** (`443cefa`→`893f745`, four commits): every name coerced to `^[a-zA-Z0-9_-]{1,64}$` and deduplicated (`_2`, `_3`) inside `normalizeUpstreamPayload`, with round-trip mapping to the caller's original names — rationale in Decisions.
 - **`stream_options`** is deleted whenever `stream` is falsy, for all providers, not only Cloudflare (`d8b12bf`).
 - **Multimodal cascade** (`5401510`): tool-result images are detected recursively and an upstream 400 from a text-only primary auto-cascades to the multimodal fallback. `router.ts` picks the fallback channel with `.neq("status","disabled")` instead of `.eq("status","healthy")`.
 - **Identity attribution split** (`7c06abd`, plus a `gemma` family in `d8b12bf`): `detectFamilyLoose()`/`familyTokenPattern()` identify a family from a slug (`gemma-4-31b-it` → Google) for `owned_by` and persona; `detectFamily()`/`tokenPattern()` still build replacements, so `gemma-cli` is untouched. Scrubbing semantics unchanged.
@@ -22,9 +26,10 @@
 - **Security audit committed** — `SECURITY-AUDIT-FINDINGS.txt`; see the audit section below.
 
 **Next Steps:**
-1. **None of the audit findings is fixed in code.** `save_soul`/`save_memory` on `/api/mcp` still pass `undefined` (`route.ts:403,422`), landing on the global keys at `agentMiddleware.ts:610`/`:997`.
-2. Deploy `51e9f43` to Vercel (manual, dashboard) and live-verify: browser tool round-trip, tool-name normalization against a strict upstream, multimodal 400 cascade.
-3. Router same-pool failover defect: still open.
+1. **Finish and commit Code Mode.** It is uncommitted and unverified by `next build`; `/v1/messages` interception is missing (see Resume here).
+2. **None of the audit findings is fixed in code.** `save_soul`/`save_memory` on `/api/mcp` still pass `undefined` (`route.ts:403,422`), landing on the global keys at `agentMiddleware.ts:610`/`:997`. Code Mode widened the same unauthenticated surface: `code_mode_execute` on that endpoint now lets any caller run code with outbound `fetch` — a new SSRF/execution path that the 2026-11-20 audit did **not** cover (it audited `d8b12bf`, before this work).
+3. Deploy `51e9f43` to Vercel (manual, dashboard) and live-verify: browser tool round-trip, tool-name normalization against a strict upstream, multimodal 400 cascade.
+4. Router same-pool failover defect: still open.
 
 ## Security audit (2026-11-20) — committed, unfixed
 
@@ -66,6 +71,7 @@ Three layers hide which model actually serves a route.
 
 ## Decisions
 
+- 2026-11-20 — **Code Mode sandbox added (uncommitted).** `src/lib/gateway/codeModeService.ts` provides an isolated V8 execution environment for model-written code. Exposed as the MCP `code_mode_execute` tool and intercepted in `/v1/chat/completions`. **Not yet wired into `/v1/messages`** — the tool is advertised in the schema but no interception exists there, so Anthropic-protocol clients will forward the call upstream instead of executing locally.
 - 2026-11-20 — Tool function names are normalized at exactly one choke point, `normalizeUpstreamPayload` (`upstream.ts`), for every provider: renamed to `^[a-zA-Z0-9_-]{1,64}$`, deduplicated, and re-mapped back to the caller's original names on the response. Fixing this per-endpoint had already produced four separate 400 reports (`443cefa`, `81bd6eb`, `893f745`).
 - 2026-11-20 — The browser engine ships with `--no-sandbox` and admits `file://`, and the MCP endpoint that exposes it has no auth. Recorded as HIGH in the committed audit and **deliberately left unfixed** for now; do not treat it as reviewed-and-cleared.
 - 2026-11-20 — Identity *attribution* and identity *scrubbing* now use different matchers (`detectFamilyLoose`/`familyTokenPattern` vs `detectFamily`/`tokenPattern`). One strict matcher for both meant every slugged name reported `owned_by: aash-api`; the split lets `gemma-4-31b-it` attribute to Google while `gemma-cli` stays unrewritten (`7c06abd`).
@@ -119,6 +125,7 @@ curl -s -m 120 "$BASE/v1/chat/completions" -H "Authorization: Bearer $KEY" \
 - `src/lib/gateway/router.ts`            # resolution + failover cascade (now includes multimodal detection + improved status handling)
 - `src/lib/gateway/upstream.ts`          # per-provider dispatch, payload normalization, tool-name choke point
 - `src/lib/gateway/browserService.ts`    # headless Chrome/Edge runner (audit finding 7)
+- `src/lib/gateway/codeModeService.ts`    # V8 code-mode sandbox — uncommitted, no auth in front of it
 - `src/lib/providers/discovery.ts`       # inference health check requirements
 - `src/app/v1/{chat/completions,messages,agent/run,models}/route.ts` (multimodal auto-delegation, inference health checks, 60s catalogue cache, tool-call intercept)
 - `src/app/api/mcp/route.ts`             # serverless MCP endpoint — POST has no auth (audit finding 1)

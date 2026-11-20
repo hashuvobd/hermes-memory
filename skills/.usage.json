@@ -54,13 +54,13 @@
     "first_seen_at": null,
     "last_patched_at": "2026-11-20T00:03:25.002286+00:00",
     "last_reused_patch_generation": 14,
-    "last_used_at": "2026-11-20T15:18:20.681004+00:00",
-    "last_viewed_at": "2026-11-20T00:03:10.463383+00:00",
+    "last_used_at": "2026-11-20T16:13:18.546986+00:00",
+    "last_viewed_at": "2026-11-20T15:42:33.141345+00:00",
     "patch_count": 14,
     "patch_generation": 14,
     "pinned": false,
     "state": "active",
-    "use_count": 17,
-    "view_count": 7
+    "use_count": 19,
+    "view_count": 8
   }
 }
