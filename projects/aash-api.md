@@ -3,21 +3,29 @@
 - **Slug:** `aash-api`
 - **Status:** active
 - **Started:** 2026-11 (repo history begins 2026-11-05)
-- **Last touched:** 2026-11-20 — identity masking redesigned to first-person-only after a production rollback; agent harness, skills/plugins studios, MCP endpoint and support auto-responder added (`f02d80e`)
+- **Last touched:** 2026-11-20 — channel health checks upgraded to inference probes; multimodal capabilities now fully advertised and handled in router, upstream, and model catalog; intelligent cooldowns for channel quarantines; caching improved (`f4c3de4` + uncommitted)
 - **Repo / location:** `E:\My Projects\AASH API` (Windows, bash/MSYS view `/e/My Projects/AASH API`) · https://github.com/hashuvobd/AASH-API · deployed https://aash-api.vercel.app
 - **Stack:** Next.js 15 (App Router, Turbopack), React 19, TypeScript, Tailwind 3, Supabase (Postgres + Auth, `@supabase/ssr`), Vercel. Added since 2026-11-10: `@vercel/analytics`.
 
 ## Resume here (2026-11-20)
 
-**Where it stopped.** Worktree clean; HEAD `f02d80e` == `origin/main` (101 commits since `c863e366`, 72 files, +19.5k/−2.2k since 2026-11-10). `npx next build` → 0 and `npx tsc --noEmit -p tsconfig.json` → 0 on this HEAD — verified locally, **not live** (this run had no API key in the environment).
+**Where it stopped.** Worktree dirty (uncommitted changes); HEAD `f4c3de4` == `origin/main` (5 new commits). `npx next build` → 0 and `npx tsc --noEmit -p tsconfig.json` → 0 on this HEAD — verified locally, **not live** (this run had no API key in the environment).
 
-**Deployment is the first thing to settle.** Production was rolled back on 2026-11-20 03:01 to `2d38441` — recorded as the *empty* commit `10f98d9 restore: rollback production to 2d38441`, because the Nov 19 "close every leak" scrubber over-scrubbed (it rewrote route names, tool-call arguments, URLs and CLI names). The redesign that fixed that landed afterwards (`3454628`, `977ae47`, `0cf431c`) and is almost certainly **not deployed**. No Vercel CLI on the box and no deployment header, so the live alias cannot be confirmed from here.
+**Current state (f4c3de4 + uncommitted):**
+- **Channel Health Checks**: Upgraded from simple catalog probes to inference probes for providers like Cloudflare Workers AI, where catalog checks don't reflect actual inference quota. This provides a more accurate `healthy`/`degraded`/`quarantined` status.
+- **Intelligent Cooldowns**: `cooldownForFailure` introduced for channel quarantines, calculating longer cooldowns for daily quota exhaustion (e.g., until next UTC midnight) versus transient rate limits.
+- **Multimodal Capabilities**:
+    - Model catalog (`/v1/models`) now exposes detailed multimodal `modalities` and `architecture` information, including image MIME types.
+    - Router, upstream, and completion endpoints (`/v1/chat/completions`, `/v1/messages`) now fully handle multimodal requests, including auto-delegation for text-only primary models to a multimodal fallback.
+    - Upstream payload normalization (`upstream.ts`) now converts various image/file input formats into a strict OpenAI `image_url` schema.
+    - Caching logic updated to *not* cache truncated or empty multimodal completions.
+- **Channel Status Workflow**: Expired quarantines are now demoted to `degraded` (not `healthy`) to signify unproven status, and a real successful completion is the *only* path to promote a channel back to `healthy` (`promoteChannelHealthy`).
+- **Model ID Compatibility**: `/v1/models` now emits both hyphenated and dotted versions of `model_id` for broader client compatibility (e.g., `llama-3-1-8b` and `llama-3.1-8b`).
 
-Order:
-1. Confirm what the live alias serves (Vercel dashboard → Deployments). If it is still `2d38441`, production runs the over-scrub.
-2. Deploy `f02d80e`.
-3. Live-verify: both wire formats resolve the route; a **first-person** vendor claim comes back as the public identity; a **third-person** vendor mention is left intact (that is the old-vs-new discriminator — see Key paths).
-4. Router same-pool failover defect (decision below) — still open.
+**Next Steps:**
+1. **Deployment and Live Verification**: Ensure `f4c3de4` (or later) + uncommitted changes are deployed to Vercel.
+2. **Live-verify**: Test the new channel health system with a quota-exhausted Cloudflare channel. Verify multimodal auto-delegation.
+3. **Router same-pool failover defect**: Still open, as noted below.
 
 ## Identity masking — current design (read before touching)
 
@@ -87,17 +95,18 @@ curl -s -m 120 "$BASE/v1/chat/completions" -H "Authorization: Bearer $KEY" \
 ```
 
 ```text
-src/lib/gateway/agentMiddleware.ts   # harness, soul/memory, skills/plugins/MCP injection (~2.2k lines)
-src/lib/gateway/identityScrubber.ts  # Layer-3 masking + persona resolver
-src/lib/gateway/identityProbe.ts     # Layer-2 identity-question detector
-src/lib/gateway/errorSanitizer.ts    # gateway-authored error bodies
-src/lib/gateway/harnessLoop.ts       # Plan-Act-Verify loop
-src/lib/gateway/router.ts            # resolution + failover cascade
-src/lib/gateway/upstream.ts          # per-provider dispatch
-src/app/v1/{chat/completions,messages,agent/run,models}/route.ts
-src/app/api/mcp/route.ts             # serverless MCP endpoint
-src/app/actions/{admin,skills,plugins,support,user,userMiddleware}.ts
-supabase/migrations/                  # 20261115_pending_sync.sql = support + route columns
+- `src/lib/gateway/agentMiddleware.ts`   # harness, soul/memory, skills/plugins/MCP injection (~2.2k lines)
+- `src/lib/gateway/identityScrubber.ts`  # Layer-3 masking + persona resolver
+- `src/lib/gateway/identityProbe.ts`     # Layer-2 identity-question detector
+- `src/lib/gateway/errorSanitizer.ts`    # gateway-authored error bodies
+- `src/lib/gateway/harnessLoop.ts`       # Plan-Act-Verify loop
+- `src/lib/gateway/router.ts`            # resolution + failover cascade (now includes multimodal detection + improved status handling)
+- `src/lib/gateway/upstream.ts`          # per-provider dispatch (now includes strict OpenAI multipart normalization)
+- `src/lib/providers/discovery.ts`       # inference health check requirements
+- `src/app/v1/{chat/completions,messages,agent/run,models}/route.ts` (now includes multimodal auto-delegation, inference health checks, robust caching, detailed model capabilities)
+- `src/app/api/mcp/route.ts`             # serverless MCP endpoint
+- `src/app/actions/{admin,skills,plugins,support,user,userMiddleware}.ts` (admin includes new channel health check logic)
+- `supabase/migrations/`                  # 20261115_pending_sync.sql = support + route columns
 ```
 
 ## Gotchas
